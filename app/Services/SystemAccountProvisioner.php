@@ -172,6 +172,218 @@ class SystemAccountProvisioner
         }
     }
 
+    /**
+     * Actualiza nombre(s) y correo de una cuenta ya existente en {$system}.
+     * Valida que el nuevo correo no choque con otra fila de ese mismo
+     * sistema antes de escribir.
+     */
+    public function updateAccountFields(SystemEntry $system, int $remoteUserId, string $firstName, ?string $lastName, string $email): array
+    {
+        if (! $system->isActive()) {
+            return ['status' => 'failed', 'message' => 'Sistema no configurado (conexión pendiente).'];
+        }
+
+        $connection = $system->connection;
+        $usersTable = $system->users_table ?: 'users';
+
+        try {
+            $duplicate = DB::connection($connection)->table($usersTable)
+                ->where($system->email_column, $email)
+                ->where('id', '!=', $remoteUserId)
+                ->exists();
+
+            if ($duplicate) {
+                return ['status' => 'failed', 'message' => 'Ese correo ya está en uso por otra cuenta en este sistema.'];
+            }
+
+            $row = [
+                $system->name_column => $firstName,
+                $system->email_column => $email,
+            ];
+
+            if ($system->last_name_column) {
+                $row[$system->last_name_column] = $lastName ?? '';
+            }
+
+            DB::connection($connection)->table($usersTable)->where('id', $remoteUserId)->update($row);
+
+            return ['status' => 'updated'];
+        } catch (Throwable $e) {
+            Log::error("Fallo actualizando cuenta en [{$system->key}]: {$e->getMessage()}");
+
+            return ['status' => 'failed', 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Da de alta/baja una cuenta. Solo soportado en sistemas con columna de
+     * estado inequívoca (booleana o soft-delete); en sistemas con columna de
+     * texto (active_type = 'text') no se sabe con certeza qué valor escribir
+     * para "de baja", así que se rechaza en vez de arriesgar datos.
+     */
+    public function setAccountActive(SystemEntry $system, int $remoteUserId, bool $active): array
+    {
+        if (! $system->isActive()) {
+            return ['status' => 'failed', 'message' => 'Sistema no configurado (conexión pendiente).'];
+        }
+
+        if (! in_array($system->active_type, ['boolean', 'soft_delete'], true)) {
+            return ['status' => 'failed', 'message' => 'Este sistema no permite cambiar el estado desde el IAM.'];
+        }
+
+        try {
+            $value = $system->active_type === 'soft_delete'
+                ? ($active ? null : now())
+                : $active;
+
+            DB::connection($system->connection)
+                ->table($system->users_table ?: 'users')
+                ->where('id', $remoteUserId)
+                ->update([$system->active_column => $value]);
+
+            return ['status' => 'updated'];
+        } catch (Throwable $e) {
+            Log::error("Fallo cambiando estado en [{$system->key}]: {$e->getMessage()}");
+
+            return ['status' => 'failed', 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Agrega un rol adicional a una cuenta ya existente. En sistemas con
+     * pivote (tabla de roles) inserta la relación si no existe todavía; en
+     * sistemas con rol como columna JSON, lo agrega al arreglo; en sistemas
+     * con rol como columna de texto simple solo se puede reemplazar (no
+     * soportan más de un rol por usuario).
+     */
+    public function addAccountRole(SystemEntry $system, int $remoteUserId, int|string $roleId, ?string $roleName): array
+    {
+        if (! $system->isActive()) {
+            return ['status' => 'failed', 'message' => 'Sistema no configurado (conexión pendiente).'];
+        }
+
+        $connection = $system->connection;
+        $usersTable = $system->users_table ?: 'users';
+
+        try {
+            if ($system->role_column) {
+                DB::connection($connection)->table($usersTable)
+                    ->where('id', $remoteUserId)
+                    ->update([$system->role_column => $roleId]);
+
+                return ['status' => 'updated', 'message' => 'Este sistema solo admite un rol por usuario; se reemplazó el anterior.'];
+            }
+
+            if ($system->role_json_column) {
+                $current = DB::connection($connection)->table($usersTable)->where('id', $remoteUserId)->value($system->role_json_column);
+                $roles = $this->decodeRoleArray($current);
+
+                if ($roles->contains($roleId)) {
+                    return ['status' => 'exists', 'message' => 'La cuenta ya tiene ese rol.'];
+                }
+
+                $roles->push($roleId);
+
+                DB::connection($connection)->table($usersTable)
+                    ->where('id', $remoteUserId)
+                    ->update([$system->role_json_column => json_encode($roles->values()->all())]);
+
+                return ['status' => 'updated'];
+            }
+
+            if ($system->role_pivot_table && $system->roles_table) {
+                $existsQuery = DB::connection($connection)->table($system->role_pivot_table)
+                    ->where($system->role_pivot_user_column, $remoteUserId)
+                    ->where($system->role_pivot_role_column, $roleId);
+
+                if ($system->role_pivot_user_column === 'model_id') {
+                    $existsQuery->where('model_type', $system->model_type);
+                }
+
+                if ($existsQuery->exists()) {
+                    return ['status' => 'exists', 'message' => 'La cuenta ya tiene ese rol.'];
+                }
+
+                $pivotRow = [
+                    $system->role_pivot_user_column => $remoteUserId,
+                    $system->role_pivot_role_column => $roleId,
+                ];
+
+                if ($system->role_pivot_user_column === 'model_id') {
+                    $pivotRow['model_type'] = $system->model_type;
+                }
+
+                DB::connection($connection)->table($system->role_pivot_table)->insert($pivotRow);
+
+                return ['status' => 'updated'];
+            }
+
+            return ['status' => 'failed', 'message' => 'Este sistema no tiene un mecanismo de roles reconocible.'];
+        } catch (Throwable $e) {
+            Log::error("Fallo agregando rol en [{$system->key}]: {$e->getMessage()}");
+
+            return ['status' => 'failed', 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Quita un rol de una cuenta. En sistemas con rol como columna de texto
+     * simple, "quitar" deja la columna en null (no hay otro rol al que
+     * volver). En pivote/JSON, elimina solo esa relación/valor puntual.
+     */
+    public function removeAccountRole(SystemEntry $system, int $remoteUserId, int|string $roleId): array
+    {
+        if (! $system->isActive()) {
+            return ['status' => 'failed', 'message' => 'Sistema no configurado (conexión pendiente).'];
+        }
+
+        $connection = $system->connection;
+        $usersTable = $system->users_table ?: 'users';
+
+        try {
+            if ($system->role_column) {
+                DB::connection($connection)->table($usersTable)
+                    ->where('id', $remoteUserId)
+                    ->update([$system->role_column => null]);
+
+                return ['status' => 'updated'];
+            }
+
+            if ($system->role_json_column) {
+                $current = DB::connection($connection)->table($usersTable)->where('id', $remoteUserId)->value($system->role_json_column);
+                $roles = $this->decodeRoleArray($current)
+                    ->reject(fn ($value) => (string) $value === (string) $roleId)
+                    ->values();
+
+                DB::connection($connection)->table($usersTable)
+                    ->where('id', $remoteUserId)
+                    ->update([$system->role_json_column => json_encode($roles->all())]);
+
+                return ['status' => 'updated'];
+            }
+
+            if ($system->role_pivot_table && $system->roles_table) {
+                $query = DB::connection($connection)->table($system->role_pivot_table)
+                    ->where($system->role_pivot_user_column, $remoteUserId)
+                    ->where($system->role_pivot_role_column, $roleId);
+
+                if ($system->role_pivot_user_column === 'model_id') {
+                    $query->where('model_type', $system->model_type);
+                }
+
+                $query->delete();
+
+                return ['status' => 'updated'];
+            }
+
+            return ['status' => 'failed', 'message' => 'Este sistema no tiene un mecanismo de roles reconocible.'];
+        } catch (Throwable $e) {
+            Log::error("Fallo quitando rol en [{$system->key}]: {$e->getMessage()}");
+
+            return ['status' => 'failed', 'message' => $e->getMessage()];
+        }
+    }
+
     private function splitName(string $fullName): array
     {
         $parts = explode(' ', trim($fullName), 2);
@@ -219,7 +431,10 @@ class SystemAccountProvisioner
                     ? "LOWER(TRIM(CONCAT({$system->name_column}, ' ', {$system->last_name_column})))"
                     : "LOWER(TRIM({$system->name_column}))";
 
-                $selectCols = "id, {$system->email_column} as email, created_at";
+                $selectCols = "id, {$system->name_column} as first_name, {$system->email_column} as email, created_at";
+                if ($system->last_name_column) {
+                    $selectCols .= ", {$system->last_name_column} as last_name";
+                }
                 if ($system->role_column) {
                     $selectCols .= ", {$system->role_column} as inline_role";
                 }
@@ -238,18 +453,30 @@ class SystemAccountProvisioner
 
                 foreach ($rows as $row) {
                     $roles = match (true) {
-                        (bool) $system->role_column => array_values(array_filter([$row->inline_role ?? null])),
-                        (bool) $system->role_json_column => $this->decodeRoleArray($row->inline_roles_json ?? null)->values()->all(),
+                        (bool) $system->role_column => array_values(array_filter([$row->inline_role ?? null]))
+                            ? [['id' => $row->inline_role, 'name' => $row->inline_role]]
+                            : [],
+                        (bool) $system->role_json_column => $this->decodeRoleArray($row->inline_roles_json ?? null)
+                            ->map(fn ($value) => ['id' => $value, 'name' => $value])
+                            ->values()->all(),
                         default => $this->fetchRolesForUser($system, $row->id),
                     };
 
                     $out->push([
+                        'system_id' => $system->id,
                         'system_key' => $system->key,
                         'system_name' => $system->name,
+                        'remote_user_id' => $row->id,
+                        'first_name' => $row->first_name,
+                        'last_name' => $row->last_name ?? null,
+                        'has_last_name' => (bool) $system->last_name_column,
                         'email' => $row->email,
                         'created_at' => $row->created_at,
                         'roles' => $roles,
                         'active' => $this->resolveActiveStatus($system, $row->inline_active ?? null),
+                        'active_editable' => in_array($system->active_type, ['boolean', 'soft_delete'], true),
+                        'roles_editable' => (bool) ($system->role_pivot_table && $system->roles_table) || (bool) $system->role_json_column || (bool) $system->role_column,
+                        'single_role' => (bool) $system->role_column,
                     ]);
                 }
             } catch (Throwable $e) {
@@ -316,7 +543,11 @@ class SystemAccountProvisioner
                 $builder->where("{$system->role_pivot_table}.model_type", $system->model_type);
             }
 
-            return $builder->pluck("{$system->roles_table}.name")->toArray();
+            return $builder
+                ->select("{$system->roles_table}.id", "{$system->roles_table}.name")
+                ->get()
+                ->map(fn ($r) => ['id' => $r->id, 'name' => $r->name])
+                ->all();
         } catch (Throwable $e) {
             Log::warning("Fallo trayendo roles de usuario en [{$system->key}]: {$e->getMessage()}");
 

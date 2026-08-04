@@ -12,6 +12,11 @@ const props = defineProps({
 
 const page = usePage();
 
+function xsrfHeader() {
+    const match = document.cookie.match(/(?:^|; )XSRF-TOKEN=([^;]*)/);
+    return match ? decodeURIComponent(match[1]) : '';
+}
+
 const q = ref(props.filters.q ?? '');
 const systemFilter = ref(props.filters.system ?? '');
 const statusFilter = ref(props.filters.status ?? '');
@@ -85,6 +90,198 @@ async function openDetail(person) {
 
 function closeDetail() {
     showDetail.value = false;
+}
+
+// Modal "Editar"
+const showEdit = ref(false);
+const editLoading = ref(false);
+const editName = ref('');
+const editAccounts = ref([]);
+
+async function openEdit(person) {
+    editName.value = person.name;
+    editAccounts.value = [];
+    editLoading.value = true;
+    showEdit.value = true;
+
+    try {
+        const res = await fetch(route('users.detail', { name: person.name }, false));
+        const data = await res.json();
+        editAccounts.value = (data.accounts ?? []).map((account) => ({
+            ...account,
+            _saving: false,
+            _message: null,
+            _messageType: 'success',
+            _rolesLoading: false,
+            _availableRoles: [],
+            _rolesLoaded: false,
+            _selectedRoleId: '',
+            _addingRole: false,
+            _removingRoleId: null,
+        }));
+    } finally {
+        editLoading.value = false;
+    }
+}
+
+function closeEdit() {
+    showEdit.value = false;
+}
+
+function flash(account, message, type = 'success') {
+    account._message = message;
+    account._messageType = type;
+}
+
+async function saveAccount(account) {
+    account._saving = true;
+    account._message = null;
+
+    try {
+        const res = await fetch(route('users.accounts.update', account.system_id, false), {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-XSRF-TOKEN': xsrfHeader(),
+                Accept: 'application/json',
+            },
+            body: JSON.stringify({
+                remote_user_id: account.remote_user_id,
+                first_name: account.first_name,
+                last_name: account.last_name,
+                email: account.email,
+            }),
+        });
+        const data = await res.json();
+
+        if (data.status === 'updated') {
+            flash(account, 'Datos actualizados.', 'success');
+        } else {
+            flash(account, data.message ?? 'No se pudo actualizar.', 'error');
+        }
+    } catch (e) {
+        flash(account, 'Error de conexión al guardar.', 'error');
+    } finally {
+        account._saving = false;
+    }
+}
+
+async function toggleActive(account) {
+    const nextValue = !account.active;
+    account._saving = true;
+    account._message = null;
+
+    try {
+        const res = await fetch(route('users.accounts.status', account.system_id, false), {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-XSRF-TOKEN': xsrfHeader(),
+                Accept: 'application/json',
+            },
+            body: JSON.stringify({ active: nextValue }),
+        });
+        const data = await res.json();
+
+        if (data.status === 'updated') {
+            account.active = nextValue;
+            flash(account, nextValue ? 'Cuenta dada de alta.' : 'Cuenta dada de baja.', 'success');
+        } else {
+            flash(account, data.message ?? 'No se pudo cambiar el estado.', 'error');
+        }
+    } catch (e) {
+        flash(account, 'Error de conexión al cambiar el estado.', 'error');
+    } finally {
+        account._saving = false;
+    }
+}
+
+async function loadRolesFor(account) {
+    if (account._rolesLoaded || account._rolesLoading) return;
+
+    account._rolesLoading = true;
+    try {
+        const res = await fetch(route('users.roles', account.system_id, false));
+        const data = await res.json();
+        account._availableRoles = data.roles ?? [];
+        account._rolesLoaded = true;
+    } finally {
+        account._rolesLoading = false;
+    }
+}
+
+async function addRole(account) {
+    if (!account._selectedRoleId) return;
+
+    const role = account._availableRoles.find((r) => String(r.id) === String(account._selectedRoleId));
+    account._addingRole = true;
+    account._message = null;
+
+    try {
+        const res = await fetch(route('users.accounts.roles', account.system_id, false), {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-XSRF-TOKEN': xsrfHeader(),
+                Accept: 'application/json',
+            },
+            body: JSON.stringify({
+                remote_user_id: account.remote_user_id,
+                role_id: role?.id ?? account._selectedRoleId,
+                role_name: role?.name ?? null,
+            }),
+        });
+        const data = await res.json();
+
+        if (data.status === 'updated') {
+            if (role) {
+                const alreadyThere = account.roles.some((r) => String(r.id) === String(role.id));
+                account.roles = account.single_role ? [role] : (alreadyThere ? account.roles : [...account.roles, role]);
+            }
+            flash(account, data.message ?? 'Rol agregado.', 'success');
+        } else if (data.status === 'exists') {
+            flash(account, data.message ?? 'Ya tenía ese rol.', 'error');
+        } else {
+            flash(account, data.message ?? 'No se pudo agregar el rol.', 'error');
+        }
+    } catch (e) {
+        flash(account, 'Error de conexión al agregar el rol.', 'error');
+    } finally {
+        account._addingRole = false;
+        account._selectedRoleId = '';
+    }
+}
+
+async function removeRole(account, role) {
+    account._removingRoleId = role.id;
+    account._message = null;
+
+    try {
+        const res = await fetch(route('users.accounts.roles.destroy', account.system_id, false), {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-XSRF-TOKEN': xsrfHeader(),
+                Accept: 'application/json',
+            },
+            body: JSON.stringify({
+                remote_user_id: account.remote_user_id,
+                role_id: role.id,
+            }),
+        });
+        const data = await res.json();
+
+        if (data.status === 'updated') {
+            account.roles = account.roles.filter((r) => String(r.id) !== String(role.id));
+            flash(account, 'Rol quitado.', 'success');
+        } else {
+            flash(account, data.message ?? 'No se pudo quitar el rol.', 'error');
+        }
+    } catch (e) {
+        flash(account, 'Error de conexión al quitar el rol.', 'error');
+    } finally {
+        account._removingRoleId = null;
+    }
 }
 
 function formatDate(value) {
@@ -202,12 +399,20 @@ function formatDate(value) {
                                     </div>
                                 </td>
                                 <td class="whitespace-nowrap px-4 py-3 text-right align-top">
-                                    <button
-                                        @click="openDetail(person)"
-                                        class="rounded-md border border-gray-300 px-3 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
-                                    >
-                                        Ver
-                                    </button>
+                                    <div class="flex justify-end gap-2">
+                                        <button
+                                            @click="openDetail(person)"
+                                            class="rounded-md border border-gray-300 px-3 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+                                        >
+                                            Ver
+                                        </button>
+                                        <button
+                                            @click="openEdit(person)"
+                                            class="rounded-md border border-indigo-300 px-3 py-1 text-xs font-medium text-indigo-600 hover:bg-indigo-50 dark:border-indigo-700 dark:text-indigo-400 dark:hover:bg-indigo-950"
+                                        >
+                                            Editar
+                                        </button>
+                                    </div>
                                 </td>
                             </tr>
                             <tr v-if="!people.data.length">
@@ -279,14 +484,159 @@ function formatDate(value) {
                                 <span v-else class="flex flex-wrap gap-1">
                                     <span
                                         v-for="role in account.roles"
-                                        :key="role"
+                                        :key="role.id"
                                         class="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600 dark:bg-gray-700 dark:text-gray-300"
                                     >
-                                        {{ role }}
+                                        {{ role.name }}
                                     </span>
                                 </span>
                             </dd>
                         </dl>
+                    </div>
+                </div>
+            </div>
+        </Modal>
+
+        <!-- Modal "Editar" -->
+        <Modal :show="showEdit" @close="closeEdit" max-width="2xl">
+            <div class="p-6">
+                <div class="mb-4 flex items-center justify-between">
+                    <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100">Editar — {{ editName }}</h3>
+                    <button @click="closeEdit" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">✕</button>
+                </div>
+
+                <div v-if="editLoading" class="py-8 text-center text-sm text-gray-400">
+                    Cargando...
+                </div>
+
+                <div v-else-if="!editAccounts.length" class="py-8 text-center text-sm text-gray-400">
+                    No se encontraron cuentas para esta persona.
+                </div>
+
+                <div v-else class="max-h-[70vh] space-y-4 overflow-y-auto">
+                    <div
+                        v-for="account in editAccounts"
+                        :key="account.system_key + account.remote_user_id"
+                        class="rounded-md border border-gray-200 p-4 dark:border-gray-700"
+                    >
+                        <div class="mb-3 flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                <span :class="['inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium', colorFor(account.system_key)]">
+                                    {{ account.system_name }}
+                                </span>
+                                <span :class="['inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium', accountStatusClass(account.active)]">
+                                    {{ accountStatusLabel(account.active) }}
+                                </span>
+                            </div>
+
+                            <button
+                                v-if="account.active_editable"
+                                @click="toggleActive(account)"
+                                :disabled="account._saving"
+                                :class="[
+                                    'rounded-md border px-3 py-1 text-xs font-medium disabled:opacity-40',
+                                    account.active
+                                        ? 'border-red-300 text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950'
+                                        : 'border-emerald-300 text-emerald-600 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950',
+                                ]"
+                            >
+                                {{ account.active ? 'Dar de baja' : 'Dar de alta' }}
+                            </button>
+                            <span v-else class="text-xs text-gray-400" title="Este sistema no tiene una columna de estado inequívoca">
+                                Estado no editable
+                            </span>
+                        </div>
+
+                        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                            <div>
+                                <label class="text-xs text-gray-400">Nombre</label>
+                                <input
+                                    v-model="account.first_name"
+                                    type="text"
+                                    class="mt-1 block w-full rounded-md border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200"
+                                />
+                            </div>
+                            <div v-if="account.has_last_name">
+                                <label class="text-xs text-gray-400">Apellido</label>
+                                <input
+                                    v-model="account.last_name"
+                                    type="text"
+                                    class="mt-1 block w-full rounded-md border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200"
+                                />
+                            </div>
+                            <div :class="account.has_last_name ? 'sm:col-span-2' : ''">
+                                <label class="text-xs text-gray-400">Correo</label>
+                                <input
+                                    v-model="account.email"
+                                    type="email"
+                                    class="mt-1 block w-full rounded-md border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200"
+                                />
+                            </div>
+                        </div>
+
+                        <div class="mt-3">
+                            <button
+                                @click="saveAccount(account)"
+                                :disabled="account._saving"
+                                class="rounded-md bg-gray-800 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-40 dark:bg-gray-200 dark:text-gray-800"
+                            >
+                                Guardar cambios
+                            </button>
+                            <span
+                                v-if="account._message"
+                                :class="['ml-2 text-xs', account._messageType === 'error' ? 'text-red-500' : 'text-emerald-600']"
+                            >
+                                {{ account._message }}
+                            </span>
+                        </div>
+
+                        <div class="mt-4 border-t border-gray-100 pt-3 dark:border-gray-700">
+                            <label class="text-xs text-gray-400">Roles</label>
+                            <div class="mt-1 flex flex-wrap gap-1">
+                                <span v-if="!account.roles.length" class="text-xs text-gray-400">Sin roles asignados</span>
+                                <span
+                                    v-for="role in account.roles"
+                                    :key="role.id"
+                                    class="inline-flex items-center gap-1 rounded-full bg-gray-100 py-0.5 pl-2 pr-1 text-xs text-gray-600 dark:bg-gray-700 dark:text-gray-300"
+                                >
+                                    {{ role.name }}
+                                    <button
+                                        v-if="account.roles_editable"
+                                        @click="removeRole(account, role)"
+                                        :disabled="account._removingRoleId === role.id"
+                                        class="rounded-full px-1 text-gray-400 hover:bg-gray-200 hover:text-red-600 disabled:opacity-40 dark:hover:bg-gray-600"
+                                        title="Quitar rol"
+                                    >
+                                        ✕
+                                    </button>
+                                </span>
+                            </div>
+
+                            <div v-if="account.roles_editable" class="mt-2 flex items-center gap-2">
+                                <select
+                                    v-model="account._selectedRoleId"
+                                    @focus="loadRolesFor(account)"
+                                    class="w-full max-w-xs rounded-md border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200"
+                                >
+                                    <option value="">
+                                        {{ account._rolesLoading ? 'Cargando roles...' : 'Elegir rol para agregar' }}
+                                    </option>
+                                    <option v-for="role in account._availableRoles" :key="role.id" :value="role.id">
+                                        {{ role.name }}
+                                    </option>
+                                </select>
+                                <button
+                                    @click="addRole(account)"
+                                    :disabled="!account._selectedRoleId || account._addingRole"
+                                    class="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-40 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+                                >
+                                    + Agregar
+                                </button>
+                            </div>
+                            <p v-else class="mt-1 text-xs text-gray-400">
+                                Este sistema no tiene un mecanismo de roles reconocible.
+                            </p>
+                        </div>
                     </div>
                 </div>
             </div>

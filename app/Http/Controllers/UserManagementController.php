@@ -113,4 +113,61 @@ class UserManagementController extends Controller
 
         return redirect()->route('users.index')->with('provisionResults', $results);
     }
+
+    public function updateAccount(Request $request, SystemEntry $system, SystemAccountProvisioner $provisioner)
+    {
+        $data = $request->validate([
+            'remote_user_id' => ['required', 'integer'],
+            'first_name' => ['required', 'string', 'max:255'],
+            'last_name' => ['nullable', 'string', 'max:255'],
+            'email' => ['required', 'email', 'max:255'],
+        ]);
+
+        $result = $provisioner->updateAccountFields(
+            $system,
+            $data['remote_user_id'],
+            $data['first_name'],
+            $data['last_name'] ?? null,
+            $data['email'],
+        );
+
+        return response()->json($result);
+    }
+
+    public function updateAccountStatus(Request $request, SystemEntry $system, SystemAccountProvisioner $provisioner)
+    {
+        $data = $request->validate([
+            'remote_user_id' => ['required', 'integer'],
+            'active' => ['required', 'boolean'],
+        ]);
+
+        $result = $provisioner->setAccountActive($system, $data['remote_user_id'], $data['active']);
+
+        return response()->json($result);
+    }
+
+    public function addAccountRole(Request $request, SystemEntry $system, SystemAccountProvisioner $provisioner)
+    {
+        $data = $request->validate([
+            'remote_user_id' => ['required', 'integer'],
+            'role_id' => ['required'],
+            'role_name' => ['nullable', 'string'],
+        ]);
+
+        $result = $provisioner->addAccountRole($system, $data['remote_user_id'], $data['role_id'], $data['role_name'] ?? null);
+
+        return response()->json($result);
+    }
+
+    public function removeAccountRole(Request $request, SystemEntry $system, SystemAccountProvisioner $provisioner)
+    {
+        $data = $request->validate([
+            'remote_user_id' => ['required', 'integer'],
+            'role_id' => ['required'],
+        ]);
+
+        $result = $provisioner->removeAccountRole($system, $data['remote_user_id'], $data['role_id']);
+
+        return response()->json($result);
+    }
 }
