@@ -38,7 +38,7 @@ async function toggleSystem(system) {
     if (!rolesState[system.id]) {
         rolesState[system.id] = { loading: true, roles: [] };
         try {
-            const res = await fetch(route('users.roles', system.id));
+            const res = await fetch(route('users.roles', system.id, false));
             const data = await res.json();
             rolesState[system.id] = { loading: false, roles: data.roles ?? [] };
         } catch (e) {

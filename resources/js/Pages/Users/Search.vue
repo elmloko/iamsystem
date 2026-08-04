@@ -25,7 +25,7 @@ watch(query, (value) => {
 async function runSearch(value) {
     loading.value = true;
     try {
-        const res = await fetch(route('search.query', { q: value }));
+        const res = await fetch(route('search.query', { q: value }, false));
         const data = await res.json();
         groups.value = data.groups ?? [];
         searched.value = true;

@@ -18,6 +18,11 @@ class SystemsSeeder extends Seeder
      *    tabla de roles (backgescon) o usan pivote "role_user" (backcasillas).
      *  - filatelia usa "full_name" y "password_hash" en vez de
      *    name/password, y pivote "user_roles".
+     *  - bolipost/helpdesk/sitra/calcupost/sysreclamos usan el pivote
+     *    polimórfico de spatie/laravel-permission ("model_has_roles" con
+     *    model_id + model_type, no user_id).
+     *  - sistema_documentos NO tiene tabla de roles: el rol es una columna
+     *    de texto directa en users.role (ver role_column).
      *  - trackpak quedó "pending": el host nuevo (172.65.10.51) rechaza
      *    las credenciales agbc/Correos.2026 (Access denied) — hay que
      *    verificar la contraseña real con el equipo antes de activarlo.
@@ -28,6 +33,7 @@ class SystemsSeeder extends Seeder
             [
                 'key' => 'bolipost', 'name' => 'Bolipost', 'connection' => 'sys_bolipost',
                 'roles_table' => 'roles',
+                'role_pivot_table' => 'model_has_roles', 'role_pivot_user_column' => 'model_id', 'role_pivot_role_column' => 'role_id',
             ],
             [
                 'key' => 'apifacturacion', 'name' => 'API Facturación AGBC', 'connection' => 'sys_apifacturacion',
@@ -37,6 +43,7 @@ class SystemsSeeder extends Seeder
             [
                 'key' => 'back_atencion', 'name' => 'Atención al Cliente (Back)', 'connection' => 'sys_back_atencion',
                 'roles_table' => 'roles',
+                'role_pivot_table' => 'user_roles', 'role_pivot_user_column' => 'user_id', 'role_pivot_role_column' => 'role_id',
             ],
             [
                 'key' => 'backgescon', 'name' => 'Gescon', 'connection' => 'sys_backgescon',
@@ -46,7 +53,7 @@ class SystemsSeeder extends Seeder
             ],
             [
                 'key' => 'sistema_documentos', 'name' => 'Sistema de Documentos', 'connection' => 'sys_sistema_documentos',
-                'roles_table' => 'roles',
+                'roles_table' => null, 'role_column' => 'role', // el rol es una columna de texto en users, no una tabla aparte
             ],
             [
                 'key' => 'filatelia', 'name' => 'Filatelia', 'connection' => 'sys_filatelia',
@@ -57,10 +64,12 @@ class SystemsSeeder extends Seeder
             [
                 'key' => 'helpdesk', 'name' => 'Helpdesk', 'connection' => 'sys_helpdesk',
                 'roles_table' => 'roles',
+                'role_pivot_table' => 'model_has_roles', 'role_pivot_user_column' => 'model_id', 'role_pivot_role_column' => 'role_id',
             ],
             [
                 'key' => 'sitra', 'name' => 'Sitra', 'connection' => 'sys_sitra',
                 'roles_table' => 'roles',
+                'role_pivot_table' => 'model_has_roles', 'role_pivot_user_column' => 'model_id', 'role_pivot_role_column' => 'role_id',
             ],
             [
                 'key' => 'backcasillas', 'name' => 'Back Casillas', 'connection' => 'sys_backcasillas',
@@ -71,22 +80,42 @@ class SystemsSeeder extends Seeder
             [
                 'key' => 'calcupost', 'name' => 'Calcupost', 'connection' => 'sys_calcupost',
                 'roles_table' => 'roles',
+                'role_pivot_table' => 'model_has_roles', 'role_pivot_user_column' => 'model_id', 'role_pivot_role_column' => 'role_id',
             ],
             [
                 'key' => 'sysreclamos', 'name' => 'Sysreclamos', 'connection' => 'sys_sysreclamos',
                 'roles_table' => 'roles',
+                'role_pivot_table' => 'model_has_roles', 'role_pivot_user_column' => 'model_id', 'role_pivot_role_column' => 'role_id',
+            ],
+            [
+                'key' => 'trackpak', 'name' => 'Trackpak', 'connection' => 'sys_trackpak',
+                'roles_table' => 'roles',
+                'role_pivot_table' => 'model_has_roles', 'role_pivot_user_column' => 'model_id', 'role_pivot_role_column' => 'role_id',
+            ],
+            [
+                'key' => 'sgdb', 'name' => 'SGDB', 'connection' => 'sys_sgdb',
+                'role_json_column' => 'rol_global', // arreglo JSON de roles en la propia fila del usuario
+            ],
+            [
+                'key' => 'integracion', 'name' => 'Integración API', 'connection' => 'sys_integracion',
+                'role_column' => 'role', // rol como columna de texto directa
+            ],
+            [
+                'key' => 'apiweb', 'name' => 'API Web', 'connection' => 'sys_apiweb',
+                'roles_table' => 'roles',
+                'role_pivot_table' => 'model_has_roles', 'role_pivot_user_column' => 'model_id', 'role_pivot_role_column' => 'role_id',
+            ],
+            [
+                'key' => 'intranetagencia', 'name' => 'Intranet Agencia', 'connection' => 'sys_intranetagencia',
+                'name_column' => 'us_nombrecompleto', 'email_column' => 'us_email',
+                'role_column' => 'us_tipo', // solo 2 valores reales: USUARIO / ADMINISTRADOR
             ],
         ];
 
         $pending = [
-            ['key' => 'sgdb', 'name' => 'SGDB', 'notes' => 'Falta verificar credenciales/host en el .env real del sistema.'],
-            ['key' => 'integracion', 'name' => 'Integración API', 'notes' => 'Falta verificar credenciales/host en el .env real del sistema.'],
-            ['key' => 'intranetagencia', 'name' => 'Intranet Agencia', 'notes' => 'Falta verificar credenciales/host en el .env real del sistema.'],
-            ['key' => 'miexpress', 'name' => 'Mi Express', 'notes' => 'Falta verificar credenciales/host en el .env real del sistema.'],
-            ['key' => 'apiweb', 'name' => 'API Web', 'notes' => 'Falta verificar credenciales/host en el .env real del sistema.'],
             [
-                'key' => 'trackpak', 'name' => 'Trackpak', 'connection' => 'sys_trackpak',
-                'notes' => 'Host nuevo (172.65.10.51) rechaza la contraseña agbc/Correos.2026 (Access denied). Verificar credenciales reales antes de activar.',
+                'key' => 'miexpress', 'name' => 'Mi Express',
+                'notes' => 'Host distinto a los demás: el .env real dentro del contenedor usa 172.65.10.24, usuario postgres (no agbc). Confirmar credenciales antes de activar.',
             ],
         ];
 
@@ -101,7 +130,10 @@ class SystemsSeeder extends Seeder
                     'last_name_column' => $system['last_name_column'] ?? null,
                     'email_column' => $system['email_column'] ?? 'email',
                     'password_column' => $system['password_column'] ?? 'password',
+                    'model_type' => $system['model_type'] ?? 'App\\Models\\User',
                     'roles_table' => $system['roles_table'] ?? null,
+                    'role_column' => $system['role_column'] ?? null,
+                    'role_json_column' => $system['role_json_column'] ?? null,
                     'role_pivot_table' => $system['role_pivot_table'] ?? null,
                     'role_pivot_user_column' => $system['role_pivot_user_column'] ?? 'user_id',
                     'role_pivot_role_column' => $system['role_pivot_role_column'] ?? 'role_id',

@@ -14,6 +14,7 @@ class SystemEntry extends Model
         'roles_table', 'model_type', 'status', 'notes',
         'name_column', 'last_name_column', 'email_column', 'password_column',
         'role_pivot_table', 'role_pivot_user_column', 'role_pivot_role_column',
+        'role_column', 'role_json_column',
     ];
 
     public function accounts(): HasMany

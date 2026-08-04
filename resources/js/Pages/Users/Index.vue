@@ -1,5 +1,6 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
+import Modal from '@/Components/Modal.vue';
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import { ref } from 'vue';
 
@@ -22,15 +23,62 @@ function applyFilters() {
     );
 }
 
-const statusStyles = {
+const badgeColors = [
+    'bg-sky-100 text-sky-800 dark:bg-sky-900 dark:text-sky-200',
+    'bg-violet-100 text-violet-800 dark:bg-violet-900 dark:text-violet-200',
+    'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200',
+    'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200',
+    'bg-rose-100 text-rose-800 dark:bg-rose-900 dark:text-rose-200',
+    'bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200',
+];
+
+// color estable por sistema (mismo sistema = mismo color siempre, sin depender del orden de carga)
+function colorFor(systemKey) {
+    let hash = 0;
+    for (let i = 0; i < systemKey.length; i++) hash = (hash * 31 + systemKey.charCodeAt(i)) >>> 0;
+    return badgeColors[hash % badgeColors.length];
+}
+
+const provisionStatusStyles = {
     created: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200',
     exists: 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200',
     failed: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
-    pending: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300',
 };
 
-function statusLabel(status) {
-    return { created: 'Creado', exists: 'Ya existía', failed: 'Falló', pending: 'Pendiente' }[status] ?? status;
+function provisionStatusLabel(status) {
+    return { created: 'Creado', exists: 'Ya existía', failed: 'Falló' }[status] ?? status;
+}
+
+// Modal "Ver detalle"
+const showDetail = ref(false);
+const detailLoading = ref(false);
+const detailName = ref('');
+const detailAccounts = ref([]);
+
+async function openDetail(person) {
+    detailName.value = person.name;
+    detailAccounts.value = [];
+    detailLoading.value = true;
+    showDetail.value = true;
+
+    try {
+        const res = await fetch(route('users.detail', { name: person.name }, false));
+        const data = await res.json();
+        detailAccounts.value = data.accounts ?? [];
+    } finally {
+        detailLoading.value = false;
+    }
+}
+
+function closeDetail() {
+    showDetail.value = false;
+}
+
+function formatDate(value) {
+    if (!value) return '—';
+    const d = new Date(value.replace(' ', 'T'));
+    if (isNaN(d)) return value;
+    return d.toLocaleString('es-BO', { dateStyle: 'medium', timeStyle: 'short' });
 }
 </script>
 
@@ -65,8 +113,8 @@ function statusLabel(status) {
                     </p>
                     <ul class="space-y-1 text-sm">
                         <li v-for="(r, i) in page.props.flash.provisionResults" :key="i" class="flex items-center gap-2">
-                            <span :class="['rounded-full px-2 py-0.5 text-xs font-medium', statusStyles[r.status] ?? statusStyles.pending]">
-                                {{ statusLabel(r.status) }}
+                            <span :class="['rounded-full px-2 py-0.5 text-xs font-medium', provisionStatusStyles[r.status] ?? 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300']">
+                                {{ provisionStatusLabel(r.status) }}
                             </span>
                             <span class="text-gray-600 dark:text-gray-300">{{ r.system }}</span>
                             <span v-if="r.message" class="text-xs text-gray-400">— {{ r.message }}</span>
@@ -89,7 +137,7 @@ function statusLabel(status) {
                         class="w-full rounded-md border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200 sm:max-w-xs"
                     >
                         <option value="">Todos los sistemas</option>
-                        <option v-for="s in systems" :key="s.id" :value="s.key">{{ s.name }}</option>
+                        <option v-for="s in systems.filter(s => s.status === 'active')" :key="s.id" :value="s.key">{{ s.name }}</option>
                     </select>
                     <button
                         @click="applyFilters"
@@ -97,6 +145,7 @@ function statusLabel(status) {
                     >
                         Filtrar
                     </button>
+                    <span class="text-xs text-gray-400 sm:ml-auto">{{ people.total }} persona(s)</span>
                 </div>
 
                 <!-- Tabla -->
@@ -105,33 +154,34 @@ function statusLabel(status) {
                         <thead class="bg-gray-50 dark:bg-gray-900/40">
                             <tr>
                                 <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Nombre</th>
-                                <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Email</th>
-                                <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Sistemas y roles</th>
+                                <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Sistemas</th>
+                                <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400"></th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
-                            <tr v-for="person in people.data" :key="person.id">
-                                <td class="whitespace-nowrap px-4 py-3 text-sm font-medium text-gray-800 dark:text-gray-100">
+                            <tr v-for="person in people.data" :key="person.name">
+                                <td class="whitespace-nowrap px-4 py-3 align-top text-sm font-medium text-gray-800 dark:text-gray-100">
                                     {{ person.name }}
-                                </td>
-                                <td class="whitespace-nowrap px-4 py-3 text-sm text-gray-500 dark:text-gray-400">
-                                    {{ person.email }}
                                 </td>
                                 <td class="px-4 py-3">
                                     <div class="flex flex-wrap gap-1.5">
                                         <span
                                             v-for="account in person.accounts"
-                                            :key="account.id"
-                                            :title="account.message ?? ''"
-                                            :class="['inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium', statusStyles[account.status] ?? statusStyles.pending]"
+                                            :key="account.system_key"
+                                            :title="account.email"
+                                            :class="['inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium', colorFor(account.system_key)]"
                                         >
-                                            {{ account.system?.name }}
-                                            <span v-if="account.role_name" class="opacity-75">· {{ account.role_name }}</span>
-                                        </span>
-                                        <span v-if="!person.accounts.length" class="text-xs text-gray-400">
-                                            Sin sistemas asignados
+                                            {{ account.system_name }}
                                         </span>
                                     </div>
+                                </td>
+                                <td class="whitespace-nowrap px-4 py-3 text-right align-top">
+                                    <button
+                                        @click="openDetail(person)"
+                                        class="rounded-md border border-gray-300 px-3 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+                                    >
+                                        Ver
+                                    </button>
                                 </td>
                             </tr>
                             <tr v-if="!people.data.length">
@@ -160,5 +210,55 @@ function statusLabel(status) {
                 </div>
             </div>
         </div>
+
+        <Modal :show="showDetail" @close="closeDetail" max-width="xl">
+            <div class="p-6">
+                <div class="mb-4 flex items-center justify-between">
+                    <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100">{{ detailName }}</h3>
+                    <button @click="closeDetail" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">✕</button>
+                </div>
+
+                <div v-if="detailLoading" class="py-8 text-center text-sm text-gray-400">
+                    Cargando...
+                </div>
+
+                <div v-else-if="!detailAccounts.length" class="py-8 text-center text-sm text-gray-400">
+                    No se encontraron cuentas activas para esta persona.
+                </div>
+
+                <div v-else class="max-h-[60vh] space-y-3 overflow-y-auto">
+                    <div
+                        v-for="account in detailAccounts"
+                        :key="account.system_key + account.email"
+                        class="rounded-md border border-gray-200 p-4 dark:border-gray-700"
+                    >
+                        <div class="mb-2 flex items-center justify-between">
+                            <span :class="['inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium', colorFor(account.system_key)]">
+                                {{ account.system_name }}
+                            </span>
+                            <span class="text-xs text-gray-400">Creado: {{ formatDate(account.created_at) }}</span>
+                        </div>
+                        <dl class="grid grid-cols-3 gap-1 text-sm">
+                            <dt class="text-gray-400">Correo</dt>
+                            <dd class="col-span-2 text-gray-700 dark:text-gray-200">{{ account.email }}</dd>
+
+                            <dt class="text-gray-400">Roles</dt>
+                            <dd class="col-span-2">
+                                <span v-if="!account.roles.length" class="text-gray-400">Sin roles asignados / sistema sin tabla de roles</span>
+                                <span v-else class="flex flex-wrap gap-1">
+                                    <span
+                                        v-for="role in account.roles"
+                                        :key="role"
+                                        class="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600 dark:bg-gray-700 dark:text-gray-300"
+                                    >
+                                        {{ role }}
+                                    </span>
+                                </span>
+                            </dd>
+                        </dl>
+                    </div>
+                </div>
+            </div>
+        </Modal>
     </AuthenticatedLayout>
 </template>

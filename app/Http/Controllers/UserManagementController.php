@@ -6,27 +6,28 @@ use App\Models\Person;
 use App\Models\SystemEntry;
 use App\Services\SystemAccountProvisioner;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class UserManagementController extends Controller
 {
-    public function index(Request $request): Response
+    public function index(Request $request, SystemAccountProvisioner $provisioner): Response
     {
-        $query = Person::query()->with(['accounts.system']);
+        $search = $request->string('q')->trim()->value() ?: null;
+        $systemKey = $request->string('system')->trim()->value() ?: null;
+        $page = max(1, (int) $request->input('page', 1));
+        $perPage = 20;
 
-        if ($search = $request->string('q')->trim()->value()) {
-            $query->where(function ($q) use ($search) {
-                $q->where('name', 'like', "%{$search}%")
-                    ->orWhere('email', 'like', "%{$search}%");
-            });
-        }
+        $grouped = $provisioner->listGroupedByName($search, $systemKey);
 
-        if ($systemKey = $request->string('system')->trim()->value()) {
-            $query->whereHas('accounts.system', fn ($q) => $q->where('key', $systemKey));
-        }
-
-        $people = $query->orderBy('name')->paginate(15)->withQueryString();
+        $people = new LengthAwarePaginator(
+            $grouped->forPage($page, $perPage)->values(),
+            $grouped->count(),
+            $perPage,
+            $page,
+            ['path' => $request->url(), 'query' => $request->query()],
+        );
 
         return Inertia::render('Users/Index', [
             'people' => $people,
@@ -52,6 +53,19 @@ class UserManagementController extends Controller
         ]);
     }
 
+    public function detail(Request $request, SystemAccountProvisioner $provisioner)
+    {
+        $name = $request->string('name')->trim()->value();
+
+        if (! $name) {
+            return response()->json(['accounts' => []]);
+        }
+
+        return response()->json([
+            'accounts' => $provisioner->getPersonDetail($name),
+        ]);
+    }
+
     public function store(Request $request, SystemAccountProvisioner $provisioner)
     {
         $data = $request->validate([
@@ -60,7 +74,7 @@ class UserManagementController extends Controller
             'password' => ['required', 'string', 'min:8'],
             'systems' => ['required', 'array', 'min:1'],
             'systems.*.system_id' => ['required', 'exists:systems,id'],
-            'systems.*.role_id' => ['nullable', 'integer'],
+            'systems.*.role_id' => ['nullable'], // int (tabla+pivote) o string (rol como columna directa)
             'systems.*.role_name' => ['nullable', 'string'],
         ]);
 
