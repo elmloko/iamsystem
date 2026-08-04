@@ -49,6 +49,18 @@ function provisionStatusLabel(status) {
     return { created: 'Creado', exists: 'Ya existía', failed: 'Falló' }[status] ?? status;
 }
 
+function accountStatusLabel(active) {
+    if (active === true) return 'Activo';
+    if (active === false) return 'De baja';
+    return 'Sin datos';
+}
+
+function accountStatusClass(active) {
+    if (active === true) return 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200';
+    if (active === false) return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
+    return 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400';
+}
+
 // Modal "Ver detalle"
 const showDetail = ref(false);
 const detailLoading = ref(false);
@@ -233,9 +245,14 @@ function formatDate(value) {
                         class="rounded-md border border-gray-200 p-4 dark:border-gray-700"
                     >
                         <div class="mb-2 flex items-center justify-between">
-                            <span :class="['inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium', colorFor(account.system_key)]">
-                                {{ account.system_name }}
-                            </span>
+                            <div class="flex items-center gap-2">
+                                <span :class="['inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium', colorFor(account.system_key)]">
+                                    {{ account.system_name }}
+                                </span>
+                                <span :class="['inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium', accountStatusClass(account.active)]">
+                                    {{ accountStatusLabel(account.active) }}
+                                </span>
+                            </div>
                             <span class="text-xs text-gray-400">Creado: {{ formatDate(account.created_at) }}</span>
                         </div>
                         <dl class="grid grid-cols-3 gap-1 text-sm">

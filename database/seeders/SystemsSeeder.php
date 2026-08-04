@@ -26,6 +26,15 @@ class SystemsSeeder extends Seeder
      *  - trackpak quedó "pending": el host nuevo (172.65.10.51) rechaza
      *    las credenciales agbc/Correos.2026 (Access denied) — hay que
      *    verificar la contraseña real con el equipo antes de activarlo.
+     *
+     * Columna de estado (activo/de baja) verificada el 2026-08-04 contra el
+     * esquema real de cada sistema (information_schema). Tres patrones:
+     *  - soft_delete: soft-delete estándar de Laravel, activo = deleted_at
+     *    IS NULL (bolipost, sitra, calcupost, sysreclamos, trackpak).
+     *  - boolean: columna booleana propia (is_active/activo/us_estado).
+     *  - text: columna de texto (estado/status); apifacturacion, backgescon
+     *    y filatelia no tenían filas para confirmar los valores reales al
+     *    momento de mapear, así que usan la lista de valores por defecto.
      */
     public function run(): void
     {
@@ -34,81 +43,97 @@ class SystemsSeeder extends Seeder
                 'key' => 'bolipost', 'name' => 'Bolipost', 'connection' => 'sys_bolipost',
                 'roles_table' => 'roles',
                 'role_pivot_table' => 'model_has_roles', 'role_pivot_user_column' => 'model_id', 'role_pivot_role_column' => 'role_id',
+                'active_column' => 'deleted_at', 'active_type' => 'soft_delete',
             ],
             [
                 'key' => 'apifacturacion', 'name' => 'API Facturación AGBC', 'connection' => 'sys_apifacturacion',
                 'users_table' => 'usuarios', 'roles_table' => 'roles',
                 'role_pivot_table' => 'usuario_role', 'role_pivot_user_column' => 'usuario_id', 'role_pivot_role_column' => 'role_id',
+                'active_column' => 'estado', 'active_type' => 'text',
             ],
             [
                 'key' => 'back_atencion', 'name' => 'Atención al Cliente (Back)', 'connection' => 'sys_back_atencion',
                 'roles_table' => 'roles',
                 'role_pivot_table' => 'user_roles', 'role_pivot_user_column' => 'user_id', 'role_pivot_role_column' => 'role_id',
+                'active_column' => 'is_active', 'active_type' => 'boolean',
             ],
             [
                 'key' => 'backgescon', 'name' => 'Gescon', 'connection' => 'sys_backgescon',
                 'name_column' => 'nombre', 'last_name_column' => 'apellidos',
                 'roles_table' => null, // este sistema no tiene tablas de roles/permisos
                 'notes' => 'Sin tabla de roles detectada en este sistema; solo se puede crear el usuario, sin rol.',
+                'active_column' => 'estado', 'active_type' => 'text',
             ],
             [
                 'key' => 'sistema_documentos', 'name' => 'Sistema de Documentos', 'connection' => 'sys_sistema_documentos',
                 'roles_table' => null, 'role_column' => 'role', // el rol es una columna de texto en users, no una tabla aparte
+                'active_column' => 'is_active', 'active_type' => 'boolean',
             ],
             [
                 'key' => 'filatelia', 'name' => 'Filatelia', 'connection' => 'sys_filatelia',
                 'name_column' => 'full_name', 'password_column' => 'password_hash',
                 'roles_table' => 'roles',
                 'role_pivot_table' => 'user_roles', 'role_pivot_user_column' => 'user_id', 'role_pivot_role_column' => 'role_id',
+                'active_column' => 'status', 'active_type' => 'text',
             ],
             [
                 'key' => 'helpdesk', 'name' => 'Helpdesk', 'connection' => 'sys_helpdesk',
                 'roles_table' => 'roles',
                 'role_pivot_table' => 'model_has_roles', 'role_pivot_user_column' => 'model_id', 'role_pivot_role_column' => 'role_id',
+                'active_column' => 'activo', 'active_type' => 'boolean',
             ],
             [
                 'key' => 'sitra', 'name' => 'Sitra', 'connection' => 'sys_sitra',
                 'roles_table' => 'roles',
                 'role_pivot_table' => 'model_has_roles', 'role_pivot_user_column' => 'model_id', 'role_pivot_role_column' => 'role_id',
+                'active_column' => 'deleted_at', 'active_type' => 'soft_delete',
             ],
             [
                 'key' => 'backcasillas', 'name' => 'Back Casillas', 'connection' => 'sys_backcasillas',
                 'name_column' => 'nombre', 'last_name_column' => 'apellidos',
                 'roles_table' => 'roles',
                 'role_pivot_table' => 'role_user', 'role_pivot_user_column' => 'user_id', 'role_pivot_role_column' => 'role_id',
+                'active_column' => 'estado', 'active_type' => 'text',
             ],
             [
                 'key' => 'calcupost', 'name' => 'Calcupost', 'connection' => 'sys_calcupost',
                 'roles_table' => 'roles',
                 'role_pivot_table' => 'model_has_roles', 'role_pivot_user_column' => 'model_id', 'role_pivot_role_column' => 'role_id',
+                'active_column' => 'deleted_at', 'active_type' => 'soft_delete',
             ],
             [
                 'key' => 'sysreclamos', 'name' => 'Sysreclamos', 'connection' => 'sys_sysreclamos',
                 'roles_table' => 'roles',
                 'role_pivot_table' => 'model_has_roles', 'role_pivot_user_column' => 'model_id', 'role_pivot_role_column' => 'role_id',
+                'active_column' => 'deleted_at', 'active_type' => 'soft_delete',
             ],
             [
                 'key' => 'trackpak', 'name' => 'Trackpak', 'connection' => 'sys_trackpak',
                 'roles_table' => 'roles',
                 'role_pivot_table' => 'model_has_roles', 'role_pivot_user_column' => 'model_id', 'role_pivot_role_column' => 'role_id',
+                'active_column' => 'deleted_at', 'active_type' => 'soft_delete',
             ],
             [
                 'key' => 'sgdb', 'name' => 'SGDB', 'connection' => 'sys_sgdb',
                 'role_json_column' => 'rol_global', // arreglo JSON de roles en la propia fila del usuario
+                'active_column' => 'activo', 'active_type' => 'boolean',
             ],
             [
                 'key' => 'integracion', 'name' => 'Integración API', 'connection' => 'sys_integracion',
                 'role_column' => 'role', // rol como columna de texto directa
+                'active_column' => 'status', 'active_type' => 'text',
             ],
             [
                 'key' => 'apiweb', 'name' => 'API Web', 'connection' => 'sys_apiweb',
                 'roles_table' => 'roles',
                 'role_pivot_table' => 'model_has_roles', 'role_pivot_user_column' => 'model_id', 'role_pivot_role_column' => 'role_id',
+                'active_column' => 'is_active', 'active_type' => 'boolean',
             ],
             [
                 'key' => 'intranetagencia', 'name' => 'Intranet Agencia', 'connection' => 'sys_intranetagencia',
                 'name_column' => 'us_nombrecompleto', 'email_column' => 'us_email',
                 'role_column' => 'us_tipo', // solo 2 valores reales: USUARIO / ADMINISTRADOR
+                'active_column' => 'us_estado', 'active_type' => 'boolean',
             ],
         ];
 
@@ -137,6 +162,9 @@ class SystemsSeeder extends Seeder
                     'role_pivot_table' => $system['role_pivot_table'] ?? null,
                     'role_pivot_user_column' => $system['role_pivot_user_column'] ?? 'user_id',
                     'role_pivot_role_column' => $system['role_pivot_role_column'] ?? 'role_id',
+                    'active_column' => $system['active_column'] ?? null,
+                    'active_type' => $system['active_type'] ?? null,
+                    'active_values' => $system['active_values'] ?? null,
                     'status' => 'active',
                     'notes' => $system['notes'] ?? null,
                 ])

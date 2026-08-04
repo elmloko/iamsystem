@@ -226,6 +226,9 @@ class SystemAccountProvisioner
                 if ($system->role_json_column) {
                     $selectCols .= ", {$system->role_json_column} as inline_roles_json";
                 }
+                if ($system->active_column) {
+                    $selectCols .= ", {$system->active_column} as inline_active";
+                }
 
                 $rows = DB::connection($system->connection)
                     ->table($usersTable)
@@ -246,6 +249,7 @@ class SystemAccountProvisioner
                         'email' => $row->email,
                         'created_at' => $row->created_at,
                         'roles' => $roles,
+                        'active' => $this->resolveActiveStatus($system, $row->inline_active ?? null),
                     ]);
                 }
             } catch (Throwable $e) {
@@ -254,6 +258,40 @@ class SystemAccountProvisioner
         }
 
         return $out;
+    }
+
+    /**
+     * Valores de texto que se consideran "activo" cuando el sistema no
+     * define una lista propia en active_values (systems sin filas al
+     * momento de mapear, ej. apifacturacion/backgescon/filatelia).
+     */
+    private const DEFAULT_ACTIVE_TEXT_VALUES = [
+        'activo', 'active', 'habilitado', 'enabled', 'si', 'sí', 'true', '1', 'a',
+    ];
+
+    /**
+     * Normaliza el valor crudo de la columna de estado de cada sistema a un
+     * booleano (true = activo, false = de baja, null = sistema sin columna
+     * de estado mapeada, no se sabe).
+     */
+    private function resolveActiveStatus(SystemEntry $system, mixed $rawValue): ?bool
+    {
+        if (! $system->active_column || ! $system->active_type) {
+            return null;
+        }
+
+        return match ($system->active_type) {
+            'soft_delete' => $rawValue === null,
+            'boolean' => (bool) $rawValue,
+            'text' => in_array(
+                mb_strtolower(trim((string) $rawValue)),
+                $system->active_values
+                    ? json_decode($system->active_values, true)
+                    : self::DEFAULT_ACTIVE_TEXT_VALUES,
+                true
+            ),
+            default => null,
+        };
     }
 
     private function fetchRolesForUser(SystemEntry $system, int $remoteUserId): array
