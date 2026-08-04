@@ -43,7 +43,7 @@ class UserManagementController extends Controller
             'systems' => SystemEntry::where('status', 'active')
                 ->whereNotNull('connection')
                 ->orderBy('name')
-                ->get(['id', 'key', 'name']),
+                ->get(['id', 'key', 'name', 'alias_column']),
         ]);
     }
 
@@ -77,6 +77,7 @@ class UserManagementController extends Controller
             'systems.*.system_id' => ['required', 'exists:systems,id'],
             'systems.*.role_id' => ['nullable'], // int (tabla+pivote) o string (rol como columna directa)
             'systems.*.role_name' => ['nullable', 'string'],
+            'systems.*.alias' => ['nullable', 'string', 'max:255'],
         ]);
 
         $person = Person::firstOrCreate(
@@ -95,6 +96,7 @@ class UserManagementController extends Controller
                 $data['password'],
                 $entry['role_id'] ?? null,
                 $entry['role_name'] ?? null,
+                $entry['alias'] ?? null,
             );
 
             $person->accounts()->updateOrCreate(
@@ -121,6 +123,7 @@ class UserManagementController extends Controller
             'first_name' => ['required', 'string', 'max:255'],
             'last_name' => ['nullable', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255'],
+            'alias' => ['nullable', 'string', 'max:255'],
         ]);
 
         $result = $provisioner->updateAccountFields(
@@ -129,6 +132,7 @@ class UserManagementController extends Controller
             $data['first_name'],
             $data['last_name'] ?? null,
             $data['email'],
+            $data['alias'] ?? null,
         );
 
         return response()->json($result);

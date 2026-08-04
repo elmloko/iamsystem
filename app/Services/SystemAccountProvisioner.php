@@ -88,7 +88,7 @@ class SystemAccountProvisioner
      * guardan el rol como columna directa, ej. sistema_documentos). Si el
      * sistema no tiene forma de asignar rol, el usuario igual queda creado.
      */
-    public function createAccount(SystemEntry $system, Person $person, string $password, int|string|null $roleId, ?string $roleName): array
+    public function createAccount(SystemEntry $system, Person $person, string $password, int|string|null $roleId, ?string $roleName, ?string $alias = null): array
     {
         if (! $system->isActive()) {
             return ['status' => 'failed', 'message' => 'Sistema no configurado (conexión pendiente).'];
@@ -131,6 +131,10 @@ class SystemAccountProvisioner
 
             if ($system->role_json_column && $roleId) {
                 $row[$system->role_json_column] = json_encode([$roleId]);
+            }
+
+            if ($system->alias_column && filled($alias)) {
+                $row[$system->alias_column] = $alias;
             }
 
             $remoteId = DB::connection($connection)->table($usersTable)->insertGetId($row);
@@ -177,7 +181,7 @@ class SystemAccountProvisioner
      * Valida que el nuevo correo no choque con otra fila de ese mismo
      * sistema antes de escribir.
      */
-    public function updateAccountFields(SystemEntry $system, int $remoteUserId, string $firstName, ?string $lastName, string $email): array
+    public function updateAccountFields(SystemEntry $system, int $remoteUserId, string $firstName, ?string $lastName, string $email, ?string $alias = null): array
     {
         if (! $system->isActive()) {
             return ['status' => 'failed', 'message' => 'Sistema no configurado (conexión pendiente).'];
@@ -203,6 +207,10 @@ class SystemAccountProvisioner
 
             if ($system->last_name_column) {
                 $row[$system->last_name_column] = $lastName ?? '';
+            }
+
+            if ($system->alias_column) {
+                $row[$system->alias_column] = $alias;
             }
 
             DB::connection($connection)->table($usersTable)->where('id', $remoteUserId)->update($row);
@@ -444,6 +452,9 @@ class SystemAccountProvisioner
                 if ($system->active_column) {
                     $selectCols .= ", {$system->active_column} as inline_active";
                 }
+                if ($system->alias_column) {
+                    $selectCols .= ", {$system->alias_column} as inline_alias";
+                }
 
                 $rows = DB::connection($system->connection)
                     ->table($usersTable)
@@ -470,6 +481,8 @@ class SystemAccountProvisioner
                         'first_name' => $row->first_name,
                         'last_name' => $row->last_name ?? null,
                         'has_last_name' => (bool) $system->last_name_column,
+                        'alias' => $row->inline_alias ?? null,
+                        'has_alias' => (bool) $system->alias_column,
                         'email' => $row->email,
                         'created_at' => $row->created_at,
                         'roles' => $roles,

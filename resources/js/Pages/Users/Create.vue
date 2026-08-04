@@ -33,7 +33,7 @@ async function toggleSystem(system) {
         return;
     }
 
-    form.systems.push({ system_id: system.id, role_id: null, role_name: null });
+    form.systems.push({ system_id: system.id, role_id: null, role_name: null, alias: '' });
 
     if (!rolesState[system.id]) {
         rolesState[system.id] = { loading: true, roles: [] };
@@ -53,6 +53,10 @@ function setRole(systemId, role) {
         entry.role_id = role ? role.id : null;
         entry.role_name = role ? role.name : null;
     }
+}
+
+function entryFor(systemId) {
+    return form.systems.find((s) => s.system_id === systemId);
 }
 
 function submit() {
@@ -109,33 +113,44 @@ function submit() {
                                 No hay sistemas activos configurados todavía.
                             </div>
 
-                            <div v-for="system in systems" :key="system.id" class="flex flex-col gap-2 p-3 sm:flex-row sm:items-center sm:justify-between">
-                                <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
-                                    <input
-                                        type="checkbox"
-                                        :checked="isChecked(system.id)"
-                                        @change="toggleSystem(system)"
-                                        class="rounded border-gray-300 text-gray-800 focus:ring-gray-500"
-                                    />
-                                    {{ system.name }}
-                                </label>
+                            <div v-for="system in systems" :key="system.id" class="flex flex-col gap-2 p-3">
+                                <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                    <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
+                                        <input
+                                            type="checkbox"
+                                            :checked="isChecked(system.id)"
+                                            @change="toggleSystem(system)"
+                                            class="rounded border-gray-300 text-gray-800 focus:ring-gray-500"
+                                        />
+                                        {{ system.name }}
+                                    </label>
 
-                                <div v-if="isChecked(system.id)" class="sm:w-56">
-                                    <select
+                                    <div v-if="isChecked(system.id)" class="sm:w-56">
+                                        <select
+                                            class="w-full rounded-md border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200"
+                                            :disabled="rolesState[system.id]?.loading"
+                                            @change="setRole(system.id, rolesState[system.id]?.roles.find(r => String(r.id) === $event.target.value))"
+                                        >
+                                            <option value="">
+                                                {{ rolesState[system.id]?.loading ? 'Cargando roles...' : 'Sin rol' }}
+                                            </option>
+                                            <option v-for="role in rolesState[system.id]?.roles ?? []" :key="role.id" :value="role.id">
+                                                {{ role.name }}
+                                            </option>
+                                        </select>
+                                        <p v-if="!rolesState[system.id]?.loading && rolesState[system.id]?.roles.length === 0" class="mt-1 text-xs text-amber-600">
+                                            Este sistema no expone una tabla de roles reconocible.
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div v-if="isChecked(system.id) && system.alias_column" class="sm:max-w-xs">
+                                    <input
+                                        v-model="entryFor(system.id).alias"
+                                        type="text"
+                                        placeholder="Alias (opcional)"
                                         class="w-full rounded-md border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200"
-                                        :disabled="rolesState[system.id]?.loading"
-                                        @change="setRole(system.id, rolesState[system.id]?.roles.find(r => String(r.id) === $event.target.value))"
-                                    >
-                                        <option value="">
-                                            {{ rolesState[system.id]?.loading ? 'Cargando roles...' : 'Sin rol' }}
-                                        </option>
-                                        <option v-for="role in rolesState[system.id]?.roles ?? []" :key="role.id" :value="role.id">
-                                            {{ role.name }}
-                                        </option>
-                                    </select>
-                                    <p v-if="!rolesState[system.id]?.loading && rolesState[system.id]?.roles.length === 0" class="mt-1 text-xs text-amber-600">
-                                        Este sistema no expone una tabla de roles reconocible.
-                                    </p>
+                                    />
                                 </div>
                             </div>
                         </div>

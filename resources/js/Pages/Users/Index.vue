@@ -150,6 +150,7 @@ async function saveAccount(account) {
                 first_name: account.first_name,
                 last_name: account.last_name,
                 email: account.email,
+                alias: account.alias,
             }),
         });
         const data = await res.json();
@@ -179,7 +180,7 @@ async function toggleActive(account) {
                 'X-XSRF-TOKEN': xsrfHeader(),
                 Accept: 'application/json',
             },
-            body: JSON.stringify({ active: nextValue }),
+            body: JSON.stringify({ remote_user_id: account.remote_user_id, active: nextValue }),
         });
         const data = await res.json();
 
@@ -478,6 +479,11 @@ function formatDate(value) {
                             <dt class="text-gray-400">Correo</dt>
                             <dd class="col-span-2 text-gray-700 dark:text-gray-200">{{ account.email }}</dd>
 
+                            <template v-if="account.has_alias">
+                                <dt class="text-gray-400">Alias</dt>
+                                <dd class="col-span-2 text-gray-700 dark:text-gray-200">{{ account.alias || '—' }}</dd>
+                            </template>
+
                             <dt class="text-gray-400">Roles</dt>
                             <dd class="col-span-2">
                                 <span v-if="!account.roles.length" class="text-gray-400">Sin roles asignados / sistema sin tabla de roles</span>
@@ -564,11 +570,19 @@ function formatDate(value) {
                                     class="mt-1 block w-full rounded-md border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200"
                                 />
                             </div>
-                            <div :class="account.has_last_name ? 'sm:col-span-2' : ''">
+                            <div>
                                 <label class="text-xs text-gray-400">Correo</label>
                                 <input
                                     v-model="account.email"
                                     type="email"
+                                    class="mt-1 block w-full rounded-md border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200"
+                                />
+                            </div>
+                            <div v-if="account.has_alias">
+                                <label class="text-xs text-gray-400">Alias</label>
+                                <input
+                                    v-model="account.alias"
+                                    type="text"
                                     class="mt-1 block w-full rounded-md border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200"
                                 />
                             </div>

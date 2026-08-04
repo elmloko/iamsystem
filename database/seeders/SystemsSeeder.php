@@ -44,6 +44,7 @@ class SystemsSeeder extends Seeder
                 'roles_table' => 'roles',
                 'role_pivot_table' => 'model_has_roles', 'role_pivot_user_column' => 'model_id', 'role_pivot_role_column' => 'role_id',
                 'active_column' => 'deleted_at', 'active_type' => 'soft_delete',
+                'alias_column' => 'alias', // único sistema con columna "alias" en users
             ],
             [
                 'key' => 'apifacturacion', 'name' => 'API Facturación AGBC', 'connection' => 'sys_apifacturacion',
@@ -165,6 +166,7 @@ class SystemsSeeder extends Seeder
                     'active_column' => $system['active_column'] ?? null,
                     'active_type' => $system['active_type'] ?? null,
                     'active_values' => $system['active_values'] ?? null,
+                    'alias_column' => $system['alias_column'] ?? null,
                     'status' => 'active',
                     'notes' => $system['notes'] ?? null,
                 ])
