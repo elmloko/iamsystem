@@ -52,7 +52,13 @@ const showingNavigationDropdown = ref(false);
                                     :href="route('users.index')"
                                     :active="route().current('users.*')"
                                 >
-                                    Usuarios
+                                    Administrador de Usuarios
+                                </NavLink>
+                                <NavLink
+                                    :href="route('admins.index')"
+                                    :active="route().current('admins.*')"
+                                >
+                                    Usuarios internos
                                 </NavLink>
                             </div>
                         </div>
@@ -171,7 +177,13 @@ const showingNavigationDropdown = ref(false);
                             :href="route('users.index')"
                             :active="route().current('users.*')"
                         >
-                            Usuarios
+                            Administrador de Usuarios
+                        </ResponsiveNavLink>
+                        <ResponsiveNavLink
+                            :href="route('admins.index')"
+                            :active="route().current('admins.*')"
+                        >
+                            Usuarios internos
                         </ResponsiveNavLink>
                     </div>
 

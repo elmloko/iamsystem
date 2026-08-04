@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AdminUserController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SystemController;
@@ -20,6 +21,11 @@ Route::middleware('auth')->group(function () {
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 
     Route::get('/sistemas', [SystemController::class, 'index'])->name('systems.index');
+
+    Route::get('/administradores', [AdminUserController::class, 'index'])->name('admins.index');
+    Route::post('/administradores', [AdminUserController::class, 'store'])->name('admins.store');
+    Route::put('/administradores/{admin}', [AdminUserController::class, 'update'])->name('admins.update');
+    Route::delete('/administradores/{admin}', [AdminUserController::class, 'destroy'])->name('admins.destroy');
 
     Route::get('/usuarios', [UserManagementController::class, 'index'])->name('users.index');
     Route::get('/usuarios/nuevo', [UserManagementController::class, 'create'])->name('users.create');
