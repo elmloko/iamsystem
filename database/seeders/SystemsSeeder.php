@@ -146,31 +146,47 @@ class SystemsSeeder extends Seeder
         ];
 
         foreach ($active as $system) {
-            SystemEntry::updateOrCreate(
-                ['key' => $system['key']],
-                array_merge([
-                    'name' => $system['name'],
-                    'connection' => $system['connection'],
-                    'users_table' => $system['users_table'] ?? 'users',
-                    'name_column' => $system['name_column'] ?? 'name',
-                    'last_name_column' => $system['last_name_column'] ?? null,
-                    'email_column' => $system['email_column'] ?? 'email',
-                    'password_column' => $system['password_column'] ?? 'password',
-                    'model_type' => $system['model_type'] ?? 'App\\Models\\User',
-                    'roles_table' => $system['roles_table'] ?? null,
-                    'role_column' => $system['role_column'] ?? null,
-                    'role_json_column' => $system['role_json_column'] ?? null,
-                    'role_pivot_table' => $system['role_pivot_table'] ?? null,
-                    'role_pivot_user_column' => $system['role_pivot_user_column'] ?? 'user_id',
-                    'role_pivot_role_column' => $system['role_pivot_role_column'] ?? 'role_id',
-                    'active_column' => $system['active_column'] ?? null,
-                    'active_type' => $system['active_type'] ?? null,
-                    'active_values' => $system['active_values'] ?? null,
-                    'alias_column' => $system['alias_column'] ?? null,
-                    'status' => 'active',
-                    'notes' => $system['notes'] ?? null,
-                ])
-            );
+            $existing = SystemEntry::where('key', $system['key'])->first();
+
+            $payload = [
+                'name' => $system['name'],
+                'connection' => $system['connection'],
+                'users_table' => $system['users_table'] ?? 'users',
+                'name_column' => $system['name_column'] ?? 'name',
+                'last_name_column' => $system['last_name_column'] ?? null,
+                'email_column' => $system['email_column'] ?? 'email',
+                'password_column' => $system['password_column'] ?? 'password',
+                'model_type' => $system['model_type'] ?? 'App\\Models\\User',
+                'roles_table' => $system['roles_table'] ?? null,
+                'role_column' => $system['role_column'] ?? null,
+                'role_json_column' => $system['role_json_column'] ?? null,
+                'role_pivot_table' => $system['role_pivot_table'] ?? null,
+                'role_pivot_user_column' => $system['role_pivot_user_column'] ?? 'user_id',
+                'role_pivot_role_column' => $system['role_pivot_role_column'] ?? 'role_id',
+                'active_column' => $system['active_column'] ?? null,
+                'active_type' => $system['active_type'] ?? null,
+                'active_values' => $system['active_values'] ?? null,
+                'alias_column' => $system['alias_column'] ?? null,
+                'status' => 'active',
+                'notes' => $system['notes'] ?? null,
+            ];
+
+            // Los datos de conexión solo se rellenan la primera vez, a partir
+            // del bloque fijo en config/database.php (que a su vez lee el
+            // .env). Si el sistema ya tiene sus propios datos (editados desde
+            // el IAM), no los pisamos al re-sembrar.
+            if (! $existing || ! $existing->db_host) {
+                $connConfig = config("database.connections.{$system['connection']}", []);
+
+                $payload['db_driver'] = $connConfig['driver'] ?? null;
+                $payload['db_host'] = $connConfig['host'] ?? null;
+                $payload['db_port'] = $connConfig['port'] ?? null;
+                $payload['db_database'] = $connConfig['database'] ?? null;
+                $payload['db_username'] = $connConfig['username'] ?? null;
+                $payload['db_password'] = $connConfig['password'] ?? null;
+            }
+
+            SystemEntry::updateOrCreate(['key' => $system['key']], $payload);
         }
 
         foreach ($pending as $system) {

@@ -41,7 +41,7 @@ class UserManagementController extends Controller
     {
         return Inertia::render('Users/Create', [
             'systems' => SystemEntry::where('status', 'active')
-                ->whereNotNull('connection')
+                ->connectable()
                 ->orderBy('name')
                 ->get(['id', 'key', 'name', 'alias_column']),
         ]);

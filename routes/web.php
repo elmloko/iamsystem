@@ -21,6 +21,9 @@ Route::middleware('auth')->group(function () {
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 
     Route::get('/sistemas', [SystemController::class, 'index'])->name('systems.index');
+    Route::post('/sistemas', [SystemController::class, 'store'])->name('systems.store');
+    Route::put('/sistemas/{system}', [SystemController::class, 'update'])->name('systems.update');
+    Route::post('/sistemas/probar-conexion', [SystemController::class, 'testConnection'])->name('systems.test-connection');
 
     Route::get('/administradores', [AdminUserController::class, 'index'])->name('admins.index');
     Route::post('/administradores', [AdminUserController::class, 'store'])->name('admins.store');

@@ -8,6 +8,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Throwable;
 
 class SystemAccountProvisioner
@@ -27,7 +28,7 @@ class SystemAccountProvisioner
 
         if ($system->role_column) {
             try {
-                return DB::connection($system->connection)
+                return DB::connection($system->remoteConnectionName())
                     ->table($system->users_table ?: 'users')
                     ->whereNotNull($system->role_column)
                     ->where($system->role_column, '!=', '')
@@ -44,7 +45,7 @@ class SystemAccountProvisioner
 
         if ($system->role_json_column) {
             try {
-                $values = DB::connection($system->connection)
+                $values = DB::connection($system->remoteConnectionName())
                     ->table($system->users_table ?: 'users')
                     ->whereNotNull($system->role_json_column)
                     ->pluck($system->role_json_column);
@@ -68,7 +69,7 @@ class SystemAccountProvisioner
         }
 
         try {
-            return DB::connection($system->connection)
+            return DB::connection($system->remoteConnectionName())
                 ->table($system->roles_table)
                 ->select('id', 'name')
                 ->orderBy('name')
@@ -94,7 +95,7 @@ class SystemAccountProvisioner
             return ['status' => 'failed', 'message' => 'Sistema no configurado (conexión pendiente).'];
         }
 
-        $connection = $system->connection;
+        $connection = $system->remoteConnectionName();
         $usersTable = $system->users_table ?: 'users';
 
         try {
@@ -113,9 +114,16 @@ class SystemAccountProvisioner
             $row = [
                 $system->email_column => $person->email,
                 $system->password_column => Hash::make($password),
-                'created_at' => now(),
-                'updated_at' => now(),
             ];
+
+            // No todos los sistemas siguen la convención created_at/updated_at
+            // de Laravel (ej. SIGEC usa fecha_creacion como timestamp Unix).
+            if (Schema::connection($connection)->hasColumn($usersTable, 'created_at')) {
+                $row['created_at'] = now();
+            }
+            if (Schema::connection($connection)->hasColumn($usersTable, 'updated_at')) {
+                $row['updated_at'] = now();
+            }
 
             if ($system->last_name_column) {
                 [$firstName, $lastName] = $this->splitName($person->name);
@@ -187,7 +195,7 @@ class SystemAccountProvisioner
             return ['status' => 'failed', 'message' => 'Sistema no configurado (conexión pendiente).'];
         }
 
-        $connection = $system->connection;
+        $connection = $system->remoteConnectionName();
         $usersTable = $system->users_table ?: 'users';
 
         try {
@@ -244,7 +252,7 @@ class SystemAccountProvisioner
                 ? ($active ? null : now())
                 : $active;
 
-            DB::connection($system->connection)
+            DB::connection($system->remoteConnectionName())
                 ->table($system->users_table ?: 'users')
                 ->where('id', $remoteUserId)
                 ->update([$system->active_column => $value]);
@@ -270,7 +278,7 @@ class SystemAccountProvisioner
             return ['status' => 'failed', 'message' => 'Sistema no configurado (conexión pendiente).'];
         }
 
-        $connection = $system->connection;
+        $connection = $system->remoteConnectionName();
         $usersTable = $system->users_table ?: 'users';
 
         try {
@@ -345,7 +353,7 @@ class SystemAccountProvisioner
             return ['status' => 'failed', 'message' => 'Sistema no configurado (conexión pendiente).'];
         }
 
-        $connection = $system->connection;
+        $connection = $system->remoteConnectionName();
         $usersTable = $system->users_table ?: 'users';
 
         try {
@@ -427,19 +435,24 @@ class SystemAccountProvisioner
     public function getPersonDetail(string $name): Collection
     {
         $normalized = mb_strtolower(trim($name));
-        $systems = SystemEntry::where('status', 'active')->whereNotNull('connection')->get();
+        $systems = SystemEntry::where('status', 'active')->connectable()->get();
 
         $out = collect();
 
         foreach ($systems as $system) {
             try {
+                $connection = $system->remoteConnectionName();
                 $usersTable = $system->users_table ?: 'users';
+                $hasCreatedAt = Schema::connection($connection)->hasColumn($usersTable, 'created_at');
 
                 $matchExpr = $system->last_name_column
                     ? "LOWER(TRIM(CONCAT({$system->name_column}, ' ', {$system->last_name_column})))"
                     : "LOWER(TRIM({$system->name_column}))";
 
-                $selectCols = "id, {$system->name_column} as first_name, {$system->email_column} as email, created_at";
+                $selectCols = "id, {$system->name_column} as first_name, {$system->email_column} as email";
+                if ($hasCreatedAt) {
+                    $selectCols .= ", created_at";
+                }
                 if ($system->last_name_column) {
                     $selectCols .= ", {$system->last_name_column} as last_name";
                 }
@@ -456,7 +469,7 @@ class SystemAccountProvisioner
                     $selectCols .= ", {$system->alias_column} as inline_alias";
                 }
 
-                $rows = DB::connection($system->connection)
+                $rows = DB::connection($connection)
                     ->table($usersTable)
                     ->whereRaw("{$matchExpr} = ?", [$normalized])
                     ->selectRaw($selectCols)
@@ -484,7 +497,7 @@ class SystemAccountProvisioner
                         'alias' => $row->inline_alias ?? null,
                         'has_alias' => (bool) $system->alias_column,
                         'email' => $row->email,
-                        'created_at' => $row->created_at,
+                        'created_at' => $row->created_at ?? null,
                         'roles' => $roles,
                         'active' => $this->resolveActiveStatus($system, $row->inline_active ?? null),
                         'active_editable' => in_array($system->active_type, ['boolean', 'soft_delete'], true),
@@ -541,7 +554,7 @@ class SystemAccountProvisioner
         }
 
         try {
-            $builder = DB::connection($system->connection)
+            $builder = DB::connection($system->remoteConnectionName())
                 ->table($system->role_pivot_table)
                 ->join(
                     $system->roles_table,
@@ -579,7 +592,7 @@ class SystemAccountProvisioner
     public function listGroupedByName(?string $query = null, ?string $systemKey = null, ?string $status = null, int $perSystemCap = 300): Collection
     {
         $systems = SystemEntry::where('status', 'active')
-            ->whereNotNull('connection')
+            ->connectable()
             ->when($systemKey, fn ($q) => $q->where('key', $systemKey))
             ->get();
 
@@ -596,7 +609,7 @@ class SystemAccountProvisioner
                     $selectCols .= ", {$system->active_column} as inline_active";
                 }
 
-                $builder = DB::connection($system->connection)
+                $builder = DB::connection($system->remoteConnectionName())
                     ->table($system->users_table ?: 'users')
                     ->selectRaw($selectCols);
 
