@@ -14,11 +14,12 @@ const page = usePage();
 
 const q = ref(props.filters.q ?? '');
 const systemFilter = ref(props.filters.system ?? '');
+const statusFilter = ref(props.filters.status ?? '');
 
 function applyFilters() {
     router.get(
         route('users.index'),
-        { q: q.value, system: systemFilter.value },
+        { q: q.value, system: systemFilter.value, status: statusFilter.value },
         { preserveState: true, replace: true },
     );
 }
@@ -151,6 +152,15 @@ function formatDate(value) {
                         <option value="">Todos los sistemas</option>
                         <option v-for="s in systems.filter(s => s.status === 'active')" :key="s.id" :value="s.key">{{ s.name }}</option>
                     </select>
+                    <select
+                        v-model="statusFilter"
+                        @change="applyFilters"
+                        class="w-full rounded-md border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200 sm:max-w-xs"
+                    >
+                        <option value="">Activos/Baja</option>
+                        <option value="active">Solo activos</option>
+                        <option value="inactive">Solo de baja</option>
+                    </select>
                     <button
                         @click="applyFilters"
                         class="rounded-md bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200"
@@ -180,9 +190,13 @@ function formatDate(value) {
                                         <span
                                             v-for="account in person.accounts"
                                             :key="account.system_key"
-                                            :title="account.email"
-                                            :class="['inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium', colorFor(account.system_key)]"
+                                            :title="`${account.email} — ${accountStatusLabel(account.active)}`"
+                                            :class="['inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium', colorFor(account.system_key)]"
                                         >
+                                            <span
+                                                v-if="account.active !== null"
+                                                :class="['h-1.5 w-1.5 rounded-full', account.active ? 'bg-emerald-500' : 'bg-red-500']"
+                                            />
                                             {{ account.system_name }}
                                         </span>
                                     </div>

@@ -16,10 +16,11 @@ class UserManagementController extends Controller
     {
         $search = $request->string('q')->trim()->value() ?: null;
         $systemKey = $request->string('system')->trim()->value() ?: null;
+        $status = $request->string('status')->trim()->value() ?: null;
         $page = max(1, (int) $request->input('page', 1));
         $perPage = 20;
 
-        $grouped = $provisioner->listGroupedByName($search, $systemKey);
+        $grouped = $provisioner->listGroupedByName($search, $systemKey, $status);
 
         $people = new LengthAwarePaginator(
             $grouped->forPage($page, $perPage)->values(),
@@ -32,7 +33,7 @@ class UserManagementController extends Controller
         return Inertia::render('Users/Index', [
             'people' => $people,
             'systems' => SystemEntry::orderBy('name')->get(['id', 'key', 'name', 'status']),
-            'filters' => $request->only(['q', 'system']),
+            'filters' => $request->only(['q', 'system', 'status']),
         ]);
     }
 

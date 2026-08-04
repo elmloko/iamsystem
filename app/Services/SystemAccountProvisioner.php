@@ -332,7 +332,7 @@ class SystemAccountProvisioner
      * filas por sistema (ordenadas alfabéticamente) para no cargar tablas
      * enteras en cada visita a la pantalla.
      */
-    public function listGroupedByName(?string $query = null, ?string $systemKey = null, int $perSystemCap = 300): Collection
+    public function listGroupedByName(?string $query = null, ?string $systemKey = null, ?string $status = null, int $perSystemCap = 300): Collection
     {
         $systems = SystemEntry::where('status', 'active')
             ->whereNotNull('connection')
@@ -347,9 +347,14 @@ class SystemAccountProvisioner
                     ? "concat({$system->name_column}, ' ', {$system->last_name_column})"
                     : $system->name_column;
 
+                $selectCols = "id, {$nameExpr} as name, {$system->email_column} as email";
+                if ($system->active_column) {
+                    $selectCols .= ", {$system->active_column} as inline_active";
+                }
+
                 $builder = DB::connection($system->connection)
                     ->table($system->users_table ?: 'users')
-                    ->selectRaw("id, {$nameExpr} as name, {$system->email_column} as email");
+                    ->selectRaw($selectCols);
 
                 if ($query) {
                     $builder->where(function ($q) use ($system, $query) {
@@ -362,11 +367,21 @@ class SystemAccountProvisioner
                 $results = $builder->orderBy($system->name_column)->limit($perSystemCap)->get();
 
                 foreach ($results as $row) {
+                    $active = $this->resolveActiveStatus($system, $row->inline_active ?? null);
+
+                    if ($status === 'active' && $active !== true) {
+                        continue;
+                    }
+                    if ($status === 'inactive' && $active !== false) {
+                        continue;
+                    }
+
                     $rows->push([
                         'name' => trim((string) $row->name) ?: '(sin nombre)',
                         'email' => $row->email,
                         'system_key' => $system->key,
                         'system_name' => $system->name,
+                        'active' => $active,
                     ]);
                 }
             } catch (Throwable $e) {
@@ -383,6 +398,7 @@ class SystemAccountProvisioner
                         'system_key' => $row['system_key'],
                         'system_name' => $row['system_name'],
                         'email' => $row['email'],
+                        'active' => $row['active'],
                     ])->values(),
                 ];
             })
