@@ -172,46 +172,6 @@ class SystemAccountProvisioner
         }
     }
 
-    /**
-     * Busca por nombre EN VIVO en todos los sistemas activos (no solo los
-     * creados desde este IAM), agrupado por sistema.
-     */
-    public function searchByName(string $query): Collection
-    {
-        $systems = SystemEntry::where('status', 'active')->whereNotNull('connection')->get();
-
-        return $systems->map(function (SystemEntry $system) use ($query) {
-            try {
-                $nameExpr = $system->last_name_column
-                    ? "concat({$system->name_column}, ' ', {$system->last_name_column})"
-                    : $system->name_column;
-
-                $results = DB::connection($system->connection)
-                    ->table($system->users_table ?: 'users')
-                    ->where($system->name_column, 'like', "%{$query}%")
-                    ->when($system->last_name_column, fn ($q) => $q->orWhere($system->last_name_column, 'like', "%{$query}%"))
-                    ->orWhere($system->email_column, 'like', "%{$query}%")
-                    ->selectRaw("id, {$nameExpr} as name, {$system->email_column} as email")
-                    ->limit(20)
-                    ->get();
-
-                return [
-                    'system' => ['key' => $system->key, 'name' => $system->name],
-                    'results' => $results,
-                    'error' => null,
-                ];
-            } catch (Throwable $e) {
-                Log::warning("Fallo buscando en [{$system->key}]: {$e->getMessage()}");
-
-                return [
-                    'system' => ['key' => $system->key, 'name' => $system->name],
-                    'results' => collect(),
-                    'error' => 'No se pudo consultar este sistema.',
-                ];
-            }
-        })->filter(fn ($entry) => $entry['results']->isNotEmpty() || $entry['error'])->values();
-    }
-
     private function splitName(string $fullName): array
     {
         $parts = explode(' ', trim($fullName), 2);
