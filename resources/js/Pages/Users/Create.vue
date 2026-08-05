@@ -21,6 +21,9 @@ const form = useForm({
 // Estado de roles por sistema: { [systemId]: { loading, roles, selectedRoleId } }
 const rolesState = reactive({});
 
+// Estado de campos extra por sistema: { [systemId]: { loading, fields } }
+const extraFieldsState = reactive({});
+
 function isChecked(systemId) {
     return form.systems.some((s) => s.system_id === systemId);
 }
@@ -33,7 +36,7 @@ async function toggleSystem(system) {
         return;
     }
 
-    form.systems.push({ system_id: system.id, role_id: null, role_name: null, alias: '' });
+    form.systems.push({ system_id: system.id, role_id: null, role_name: null, alias: '', extra_fields: {} });
 
     if (!rolesState[system.id]) {
         rolesState[system.id] = { loading: true, roles: [] };
@@ -45,6 +48,34 @@ async function toggleSystem(system) {
             rolesState[system.id] = { loading: false, roles: [] };
         }
     }
+
+    if (!extraFieldsState[system.id]) {
+        extraFieldsState[system.id] = { loading: true, fields: [] };
+        try {
+            const res = await fetch(route('users.extra-fields', system.id, false));
+            const data = await res.json();
+            extraFieldsState[system.id] = { loading: false, fields: data.fields ?? [] };
+        } catch (e) {
+            extraFieldsState[system.id] = { loading: false, fields: [] };
+        }
+    }
+}
+
+function setExtraField(systemId, column, value) {
+    const entry = entryFor(systemId);
+    if (entry) {
+        entry.extra_fields[column] = value;
+    }
+}
+
+function toggleExtraFieldValue(systemId, column, value, checked) {
+    const entry = entryFor(systemId);
+    if (!entry) return;
+
+    const current = Array.isArray(entry.extra_fields[column]) ? entry.extra_fields[column] : [];
+    entry.extra_fields[column] = checked
+        ? [...current, value]
+        : current.filter((v) => v !== value);
 }
 
 function setRole(systemId, role) {
@@ -152,6 +183,55 @@ function submit() {
                                         class="w-full rounded-md border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200"
                                     />
                                 </div>
+
+                                <div
+                                    v-if="isChecked(system.id) && extraFieldsState[system.id]?.fields.length"
+                                    class="grid grid-cols-1 gap-3 rounded-md bg-gray-50 p-3 dark:bg-gray-900/40 sm:grid-cols-2"
+                                >
+                                    <div v-for="field in extraFieldsState[system.id].fields" :key="field.column">
+                                        <label class="text-xs text-gray-500 dark:text-gray-400">
+                                            {{ field.label }}<span v-if="field.required" class="text-red-500">*</span>
+                                        </label>
+
+                                        <select
+                                            v-if="field.type === 'select'"
+                                            class="mt-1 w-full rounded-md border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200"
+                                            :required="field.required"
+                                            @change="setExtraField(system.id, field.column, $event.target.value)"
+                                        >
+                                            <option value="">Seleccionar...</option>
+                                            <option v-for="opt in field.options ?? []" :key="opt.value" :value="opt.value">
+                                                {{ opt.label }}
+                                            </option>
+                                        </select>
+
+                                        <div v-else-if="field.type === 'multiselect'" class="mt-1 flex flex-wrap gap-2">
+                                            <label
+                                                v-for="opt in field.options ?? []"
+                                                :key="opt.value"
+                                                class="flex items-center gap-1 rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-600 dark:border-gray-700 dark:text-gray-300"
+                                            >
+                                                <input
+                                                    type="checkbox"
+                                                    class="rounded border-gray-300 text-gray-800 focus:ring-gray-500"
+                                                    @change="toggleExtraFieldValue(system.id, field.column, opt.value, $event.target.checked)"
+                                                />
+                                                {{ opt.label }}
+                                            </label>
+                                        </div>
+
+                                        <input
+                                            v-else
+                                            :type="field.type === 'date' ? 'date' : 'text'"
+                                            class="mt-1 w-full rounded-md border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200"
+                                            :required="field.required"
+                                            @input="setExtraField(system.id, field.column, $event.target.value)"
+                                        />
+                                    </div>
+                                </div>
+                                <p v-else-if="isChecked(system.id) && extraFieldsState[system.id]?.loading" class="text-xs text-gray-400">
+                                    Cargando campos adicionales...
+                                </p>
                             </div>
                         </div>
                     </div>

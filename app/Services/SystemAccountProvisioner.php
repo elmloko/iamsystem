@@ -82,6 +82,41 @@ class SystemAccountProvisioner
     }
 
     /**
+     * Campos adicionales configurados para {$system} (ver systems.extra_fields),
+     * con las opciones de los selects resueltas en vivo contra la tabla de
+     * referencia real (ej. "entidades", "oficinas") cuando corresponde. Los
+     * campos con opciones fijas (definidas en la config) se devuelven tal
+     * cual.
+     */
+    public function resolveExtraFields(SystemEntry $system): array
+    {
+        if (! $system->isActive() || empty($system->extra_fields)) {
+            return [];
+        }
+
+        return array_map(function (array $field) use ($system) {
+            if (in_array($field['type'], ['select', 'multiselect'], true) && ! empty($field['lookup_table'])) {
+                try {
+                    $field['options'] = DB::connection($system->remoteConnectionName())
+                        ->table($field['lookup_table'])
+                        ->select([
+                            "{$field['lookup_value_column']} as value",
+                            "{$field['lookup_label_column']} as label",
+                        ])
+                        ->orderBy($field['lookup_label_column'])
+                        ->get()
+                        ->toArray();
+                } catch (Throwable $e) {
+                    Log::warning("No se pudo leer opciones de [{$field['column']}] en [{$system->key}]: {$e->getMessage()}");
+                    $field['options'] = [];
+                }
+            }
+
+            return $field;
+        }, $system->extra_fields);
+    }
+
+    /**
      * Crea la cuenta de {$person} en {$system}, respetando el mapeo real de
      * columnas de ese sistema (algunos separan nombre/apellidos, otros usan
      * password_hash en vez de password, etc). $roleId puede ser un id
@@ -89,7 +124,7 @@ class SystemAccountProvisioner
      * guardan el rol como columna directa, ej. sistema_documentos). Si el
      * sistema no tiene forma de asignar rol, el usuario igual queda creado.
      */
-    public function createAccount(SystemEntry $system, Person $person, string $password, int|string|null $roleId, ?string $roleName, ?string $alias = null): array
+    public function createAccount(SystemEntry $system, Person $person, string $password, int|string|null $roleId, ?string $roleName, ?string $alias = null, array $extraFields = []): array
     {
         if (! $system->isActive()) {
             return ['status' => 'failed', 'message' => 'Sistema no configurado (conexión pendiente).'];
@@ -143,6 +178,21 @@ class SystemAccountProvisioner
 
             if ($system->alias_column && filled($alias)) {
                 $row[$system->alias_column] = $alias;
+            }
+
+            foreach ($system->extra_fields ?? [] as $field) {
+                $value = $extraFields[$field['column']] ?? null;
+
+                if ($value === null || $value === '' || $value === []) {
+                    continue;
+                }
+
+                $row[$field['column']] = match ($field['type']) {
+                    'multiselect' => ($field['store_as'] ?? 'json') === 'csv'
+                        ? implode(',', (array) $value)
+                        : json_encode(array_values((array) $value)),
+                    default => $value,
+                };
             }
 
             $remoteId = DB::connection($connection)->table($usersTable)->insertGetId($row);

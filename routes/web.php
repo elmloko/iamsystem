@@ -35,6 +35,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/usuarios/detalle', [UserManagementController::class, 'detail'])->name('users.detail');
     Route::post('/usuarios', [UserManagementController::class, 'store'])->name('users.store');
     Route::get('/usuarios/sistemas/{system}/roles', [UserManagementController::class, 'rolesFor'])->name('users.roles');
+    Route::get('/usuarios/sistemas/{system}/campos-extra', [UserManagementController::class, 'extraFieldsFor'])->name('users.extra-fields');
     Route::put('/usuarios/cuentas/{system}', [UserManagementController::class, 'updateAccount'])->name('users.accounts.update');
     Route::patch('/usuarios/cuentas/{system}/estado', [UserManagementController::class, 'updateAccountStatus'])->name('users.accounts.status');
     Route::post('/usuarios/cuentas/{system}/roles', [UserManagementController::class, 'addAccountRole'])->name('users.accounts.roles');

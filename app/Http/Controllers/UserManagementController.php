@@ -7,6 +7,7 @@ use App\Models\SystemEntry;
 use App\Services\SystemAccountProvisioner;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -54,6 +55,13 @@ class UserManagementController extends Controller
         ]);
     }
 
+    public function extraFieldsFor(SystemEntry $system, SystemAccountProvisioner $provisioner)
+    {
+        return response()->json([
+            'fields' => $provisioner->resolveExtraFields($system),
+        ]);
+    }
+
     public function detail(Request $request, SystemAccountProvisioner $provisioner)
     {
         $name = $request->string('name')->trim()->value();
@@ -78,7 +86,28 @@ class UserManagementController extends Controller
             'systems.*.role_id' => ['nullable'], // int (tabla+pivote) o string (rol como columna directa)
             'systems.*.role_name' => ['nullable', 'string'],
             'systems.*.alias' => ['nullable', 'string', 'max:255'],
+            'systems.*.extra_fields' => ['nullable', 'array'],
         ]);
+
+        // Los campos extra varían por sistema (ver systems.extra_fields), así
+        // que los obligatorios se validan aparte en vez de con reglas fijas.
+        foreach ($data['systems'] as $entry) {
+            $system = SystemEntry::find($entry['system_id']);
+
+            foreach ($system?->extra_fields ?? [] as $field) {
+                if (! ($field['required'] ?? false)) {
+                    continue;
+                }
+
+                $value = $entry['extra_fields'][$field['column']] ?? null;
+
+                if ($value === null || $value === '' || $value === []) {
+                    throw ValidationException::withMessages([
+                        'systems' => "\"{$field['label']}\" es obligatorio para {$system->name}.",
+                    ]);
+                }
+            }
+        }
 
         $person = Person::firstOrCreate(
             ['email' => $data['email']],
@@ -97,6 +126,7 @@ class UserManagementController extends Controller
                 $entry['role_id'] ?? null,
                 $entry['role_name'] ?? null,
                 $entry['alias'] ?? null,
+                $entry['extra_fields'] ?? [],
             );
 
             $person->accounts()->updateOrCreate(
