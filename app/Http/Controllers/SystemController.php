@@ -18,7 +18,7 @@ class SystemController extends Controller
     {
         $systems = SystemEntry::orderBy('name')->get([
             'id', 'key', 'name', 'status', 'connection', 'notes',
-            'users_table', 'name_column', 'last_name_column', 'email_column', 'password_column', 'model_type',
+            'users_table', 'name_column', 'last_name_column', 'email_column', 'password_column', 'password_hash_algo', 'model_type',
             'roles_table', 'role_column', 'role_json_column',
             'role_pivot_table', 'role_pivot_user_column', 'role_pivot_role_column',
             'active_column', 'active_type', 'active_values',
@@ -90,6 +90,7 @@ class SystemController extends Controller
             'last_name_column' => ['nullable', 'string', 'max:255'],
             'email_column' => ['required', 'string', 'max:255'],
             'password_column' => ['required', 'string', 'max:255'],
+            'password_hash_algo' => ['nullable', Rule::in(['bcrypt', 'sha256', 'md5', 'sha1', 'plain'])],
             'model_type' => ['nullable', 'string', 'max:255'],
 
             'role_mechanism' => ['required', Rule::in(['none', 'column', 'json', 'pivot'])],

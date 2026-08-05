@@ -74,6 +74,7 @@ const form = useForm({
     last_name_column: '',
     email_column: '',
     password_column: '',
+    password_hash_algo: 'bcrypt',
     model_type: 'App\\Models\\User',
 
     role_mechanism: 'none',
@@ -128,6 +129,7 @@ function openEdit(system) {
     form.last_name_column = system.last_name_column ?? '';
     form.email_column = system.email_column ?? 'email';
     form.password_column = system.password_column ?? 'password';
+    form.password_hash_algo = system.password_hash_algo ?? 'bcrypt';
     form.model_type = system.model_type ?? 'App\\Models\\User';
 
     form.role_mechanism = system.role_mechanism ?? 'none';
@@ -440,6 +442,19 @@ async function testConnection() {
                             <div>
                                 <InputLabel value="Columna contraseña" />
                                 <TextInput v-model="form.password_column" type="text" class="mt-1 block w-full" required />
+                            </div>
+                            <div>
+                                <InputLabel value="Algoritmo de contraseña" />
+                                <select v-model="form.password_hash_algo" class="mt-1 block w-full rounded-md border-slate-300 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200">
+                                    <option value="bcrypt">Bcrypt (estándar Laravel)</option>
+                                    <option value="sha256">SHA-256</option>
+                                    <option value="sha1">SHA-1</option>
+                                    <option value="md5">MD5</option>
+                                    <option value="plain">Texto plano (sin hash)</option>
+                                </select>
+                                <p class="mt-1 text-xs text-slate-400">
+                                    Cómo espera este sistema que se guarde la contraseña. Si no coincide, la cuenta se crea pero no puede iniciar sesión.
+                                </p>
                             </div>
                             <div>
                                 <InputLabel value="Columna alias (opcional)" />

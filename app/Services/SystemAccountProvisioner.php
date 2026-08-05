@@ -148,7 +148,7 @@ class SystemAccountProvisioner
 
             $row = [
                 $system->email_column => $person->email,
-                $system->password_column => Hash::make($password),
+                $system->password_column => $this->hashPassword($system, $password),
             ];
 
             // No todos los sistemas siguen la convención created_at/updated_at
@@ -239,7 +239,7 @@ class SystemAccountProvisioner
      * Valida que el nuevo correo no choque con otra fila de ese mismo
      * sistema antes de escribir.
      */
-    public function updateAccountFields(SystemEntry $system, int $remoteUserId, string $firstName, ?string $lastName, string $email, ?string $alias = null): array
+    public function updateAccountFields(SystemEntry $system, int $remoteUserId, string $firstName, ?string $lastName, string $email, ?string $alias = null, ?string $password = null): array
     {
         if (! $system->isActive()) {
             return ['status' => 'failed', 'message' => 'Sistema no configurado (conexión pendiente).'];
@@ -269,6 +269,10 @@ class SystemAccountProvisioner
 
             if ($system->alias_column) {
                 $row[$system->alias_column] = $alias;
+            }
+
+            if (filled($password)) {
+                $row[$system->password_column] = $this->hashPassword($system, $password);
             }
 
             DB::connection($connection)->table($usersTable)->where('id', $remoteUserId)->update($row);
@@ -448,6 +452,23 @@ class SystemAccountProvisioner
 
             return ['status' => 'failed', 'message' => $e->getMessage()];
         }
+    }
+
+    /**
+     * No todos los sistemas guardan contraseñas con bcrypt (el hash de
+     * Laravel): varios sistemas legados usan un algoritmo simple propio.
+     * Sin esto, la cuenta se crea pero el login del sistema real nunca
+     * reconoce la contraseña porque el formato del hash no coincide.
+     */
+    private function hashPassword(SystemEntry $system, string $password): string
+    {
+        return match ($system->password_hash_algo) {
+            'sha256' => hash('sha256', $password),
+            'md5' => md5($password),
+            'sha1' => sha1($password),
+            'plain' => $password,
+            default => Hash::make($password),
+        };
     }
 
     private function splitName(string $fullName): array

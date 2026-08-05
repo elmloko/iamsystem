@@ -154,6 +154,7 @@ class UserManagementController extends Controller
             'last_name' => ['nullable', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255'],
             'alias' => ['nullable', 'string', 'max:255'],
+            'password' => ['nullable', 'string', 'min:8'],
         ]);
 
         $result = $provisioner->updateAccountFields(
@@ -163,6 +164,7 @@ class UserManagementController extends Controller
             $data['last_name'] ?? null,
             $data['email'],
             $data['alias'] ?? null,
+            $data['password'] ?? null,
         );
 
         return response()->json($result);

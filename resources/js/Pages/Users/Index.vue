@@ -109,6 +109,7 @@ async function openEdit(person) {
         const data = await res.json();
         editAccounts.value = (data.accounts ?? []).map((account) => ({
             ...account,
+            _password: '',
             _saving: false,
             _message: null,
             _messageType: 'success',
@@ -151,12 +152,14 @@ async function saveAccount(account) {
                 last_name: account.last_name,
                 email: account.email,
                 alias: account.alias,
+                password: account._password || null,
             }),
         });
         const data = await res.json();
 
         if (data.status === 'updated') {
-            flash(account, 'Datos actualizados.', 'success');
+            flash(account, account._password ? 'Datos y contraseña actualizados.' : 'Datos actualizados.', 'success');
+            account._password = '';
         } else {
             flash(account, data.message ?? 'No se pudo actualizar.', 'error');
         }
@@ -583,6 +586,16 @@ function formatDate(value) {
                                 <input
                                     v-model="account.alias"
                                     type="text"
+                                    class="mt-1 block w-full rounded-md border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200"
+                                />
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-400">Nueva contraseña</label>
+                                <input
+                                    v-model="account._password"
+                                    type="password"
+                                    autocomplete="new-password"
+                                    placeholder="Dejar en blanco para no cambiarla"
                                     class="mt-1 block w-full rounded-md border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200"
                                 />
                             </div>
