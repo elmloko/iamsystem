@@ -1,8 +1,10 @@
 <?php
 
+use App\Http\Controllers\AccessRequestController;
 use App\Http\Controllers\AdminUserController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\PublicAccessRequestController;
 use App\Http\Controllers\SystemController;
 use App\Http\Controllers\UserManagementController;
 use Illuminate\Support\Facades\Route;
@@ -10,6 +12,14 @@ use Illuminate\Support\Facades\Route;
 Route::get('/', function () {
     return redirect()->route(auth()->check() ? 'dashboard' : 'login');
 });
+
+// Formulario público de solicitud de acceso: sin login, para que cualquier
+// empleado pida acceso a los sistemas que necesita.
+Route::get('/solicitar-acceso', [PublicAccessRequestController::class, 'create'])->name('access-requests.create');
+Route::post('/solicitar-acceso', [PublicAccessRequestController::class, 'store'])->name('access-requests.store');
+Route::get('/solicitar-acceso/enviada', [PublicAccessRequestController::class, 'sent'])->name('access-requests.sent');
+Route::get('/solicitar-acceso/sistemas/{system}/roles', [PublicAccessRequestController::class, 'rolesFor'])->name('access-requests.roles');
+Route::get('/solicitar-acceso/sistemas/{system}/campos-extra', [PublicAccessRequestController::class, 'extraFieldsFor'])->name('access-requests.extra-fields');
 
 Route::get('/dashboard', [DashboardController::class, 'index'])
     ->middleware(['auth', 'verified'])
@@ -19,6 +29,10 @@ Route::middleware('auth')->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
+
+    Route::get('/solicitudes', [AccessRequestController::class, 'index'])->name('access-requests.index');
+    Route::post('/solicitudes/items/{item}/aprobar', [AccessRequestController::class, 'approve'])->name('access-requests.approve');
+    Route::post('/solicitudes/items/{item}/rechazar', [AccessRequestController::class, 'reject'])->name('access-requests.reject');
 
     Route::get('/sistemas', [SystemController::class, 'index'])->name('systems.index');
     Route::post('/sistemas', [SystemController::class, 'store'])->name('systems.store');

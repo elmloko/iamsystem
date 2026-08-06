@@ -82,6 +82,19 @@ class SystemAccountProvisioner
     }
 
     /**
+     * Igual que fetchRoles(), pero para el formulario público de solicitud
+     * de acceso: nunca se debe poder pedir un rol de administrador desde
+     * ahí. Filtra por nombre (heurística: contiene "admin"), ya que ningún
+     * sistema marca explícitamente qué rol es de administrador.
+     */
+    public function fetchPublicRoles(SystemEntry $system): Collection
+    {
+        return $this->fetchRoles($system)
+            ->reject(fn ($role) => str_contains(mb_strtolower((string) $role->name), 'admin'))
+            ->values();
+    }
+
+    /**
      * Campos adicionales configurados para {$system} (ver systems.extra_fields),
      * con las opciones de los selects resueltas en vivo contra la tabla de
      * referencia real (ej. "entidades", "oficinas") cuando corresponde. Los

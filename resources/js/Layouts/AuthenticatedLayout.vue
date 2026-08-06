@@ -55,6 +55,12 @@ const showingNavigationDropdown = ref(false);
                                     Administrador de Usuarios
                                 </NavLink>
                                 <NavLink
+                                    :href="route('access-requests.index')"
+                                    :active="route().current('access-requests.index')"
+                                >
+                                    Solicitudes
+                                </NavLink>
+                                <NavLink
                                     :href="route('admins.index')"
                                     :active="route().current('admins.*')"
                                 >
@@ -178,6 +184,12 @@ const showingNavigationDropdown = ref(false);
                             :active="route().current('users.*')"
                         >
                             Administrador de Usuarios
+                        </ResponsiveNavLink>
+                        <ResponsiveNavLink
+                            :href="route('access-requests.index')"
+                            :active="route().current('access-requests.index')"
+                        >
+                            Solicitudes
                         </ResponsiveNavLink>
                         <ResponsiveNavLink
                             :href="route('admins.index')"
