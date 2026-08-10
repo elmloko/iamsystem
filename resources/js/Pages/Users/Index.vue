@@ -384,10 +384,70 @@ function toggleAddExtraFieldValue(systemId, column, value, checked) {
         : current.filter((v) => v !== value);
 }
 
-function submitAddSystems() {
-    addForm.post(route('users.store'), {
-        onSuccess: () => closeAddSystems(),
-    });
+// Modal "Baja masiva" (dar de baja en todos los sistemas de una vez)
+const showBulkDeactivate = ref(false);
+const bulkDeactivatePerson = ref(null);
+const bulkDeactivateLoading = ref(false);
+const bulkDeactivateProcessing = ref(false);
+const bulkDeactivateAccounts = ref([]); // [{ system_id, system_name, remote_user_id, active_editable, active, _status }]
+
+async function openBulkDeactivate(person) {
+    bulkDeactivatePerson.value = person;
+    bulkDeactivateAccounts.value = [];
+    bulkDeactivateLoading.value = true;
+    showBulkDeactivate.value = true;
+
+    try {
+        const res = await fetch(route('users.detail', { name: person.name }, false));
+        const data = await res.json();
+        bulkDeactivateAccounts.value = (data.accounts ?? []).map((account) => ({
+            ...account,
+            _status: 'pending', // pending | done | skipped | error
+        }));
+    } finally {
+        bulkDeactivateLoading.value = false;
+    }
+}
+
+function closeBulkDeactivate() {
+    if (bulkDeactivateProcessing.value) return;
+    showBulkDeactivate.value = false;
+    bulkDeactivatePerson.value = null;
+}
+
+function eligibleForBulkDeactivate(account) {
+    return account.active_editable && account.active === true;
+}
+
+async function confirmBulkDeactivate() {
+    bulkDeactivateProcessing.value = true;
+
+    for (const account of bulkDeactivateAccounts.value) {
+        if (!eligibleForBulkDeactivate(account)) {
+            account._status = 'skipped';
+            continue;
+        }
+
+        try {
+            const res = await fetch(route('users.accounts.status', account.system_id, false), {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-XSRF-TOKEN': xsrfHeader(),
+                    Accept: 'application/json',
+                },
+                body: JSON.stringify({ remote_user_id: account.remote_user_id, active: false }),
+            });
+            const data = await res.json();
+            account._status = data.status === 'updated' ? 'done' : 'error';
+            if (data.status === 'updated') account.active = false;
+        } catch (e) {
+            account._status = 'error';
+        }
+    }
+
+    bulkDeactivateProcessing.value = false;
+    router.reload({ only: ['people'] });
 }
 
 function formatDate(value) {
@@ -524,6 +584,12 @@ function formatDate(value) {
                                             class="rounded-md border border-emerald-300 px-3 py-1 text-xs font-medium text-emerald-600 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-950"
                                         >
                                             + Añadir
+                                        </button>
+                                        <button
+                                            @click="openBulkDeactivate(person)"
+                                            class="rounded-md border border-red-300 px-3 py-1 text-xs font-medium text-red-600 hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-950"
+                                        >
+                                            Baja masiva
                                         </button>
                                     </div>
                                 </td>
@@ -940,6 +1006,75 @@ function formatDate(value) {
                     <span v-if="addForm.processing" class="text-sm text-gray-400">Aprovisionando...</span>
                 </div>
             </form>
+        </Modal>
+
+        <!-- Modal "Baja masiva" -->
+        <Modal :show="showBulkDeactivate" @close="closeBulkDeactivate" max-width="lg">
+            <div class="p-6">
+                <div class="mb-4 flex items-center justify-between">
+                    <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100">
+                        Baja masiva — {{ bulkDeactivatePerson?.name }}
+                    </h3>
+                    <button
+                        v-if="!bulkDeactivateProcessing"
+                        type="button"
+                        @click="closeBulkDeactivate"
+                        class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                    >
+                        ✕
+                    </button>
+                </div>
+
+                <div v-if="bulkDeactivateLoading" class="py-8 text-center text-sm text-gray-400">
+                    Cargando cuentas...
+                </div>
+
+                <template v-else>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">
+                        Se dará de baja esta cuenta en todos los sistemas donde el estado se puede cambiar
+                        automáticamente. Los demás quedan sin tocar.
+                    </p>
+
+                    <ul class="mt-4 max-h-80 space-y-2 overflow-y-auto">
+                        <li
+                            v-for="account in bulkDeactivateAccounts"
+                            :key="account.system_key + account.remote_user_id"
+                            class="flex items-center justify-between rounded-md border border-gray-200 px-3 py-2 dark:border-gray-700"
+                        >
+                            <span class="text-sm text-gray-700 dark:text-gray-200">{{ account.system_name }}</span>
+
+                            <span v-if="account._status === 'done'" class="text-xs font-medium text-emerald-600">Dado de baja ✓</span>
+                            <span v-else-if="account._status === 'error'" class="text-xs font-medium text-red-500">Error</span>
+                            <span v-else-if="!account.active_editable" class="text-xs text-gray-400">Estado no editable</span>
+                            <span v-else-if="account.active !== true" class="text-xs text-gray-400">Ya está de baja</span>
+                            <span v-else-if="bulkDeactivateProcessing" class="text-xs text-gray-400">Procesando...</span>
+                            <span v-else class="text-xs font-medium text-amber-600">Se dará de baja</span>
+                        </li>
+                        <li v-if="!bulkDeactivateAccounts.length" class="text-sm text-gray-400">
+                            Esta persona no tiene cuentas registradas.
+                        </li>
+                    </ul>
+
+                    <div class="mt-6 flex justify-end gap-3">
+                        <button
+                            type="button"
+                            :disabled="bulkDeactivateProcessing"
+                            @click="closeBulkDeactivate"
+                            class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-40 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+                        >
+                            {{ bulkDeactivateAccounts.some(a => ['done','error','skipped'].includes(a._status)) ? 'Cerrar' : 'Cancelar' }}
+                        </button>
+                        <button
+                            type="button"
+                            :disabled="bulkDeactivateProcessing || !bulkDeactivateAccounts.some(eligibleForBulkDeactivate)"
+                            @click="confirmBulkDeactivate"
+                            class="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-500 disabled:opacity-40"
+                        >
+                            {{ bulkDeactivateProcessing ? 'Procesando...' : 'Dar de baja en todos' }}
+                        </button>
+                    </div>
+                </template>
+            </div>
         </Modal>
     </AuthenticatedLayout>
 </template>
