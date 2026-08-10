@@ -71,6 +71,20 @@ class SystemController extends Controller
         return redirect()->route('systems.index')->with('success', "Sistema \"{$system->name}\" actualizado.");
     }
 
+    public function destroy(SystemEntry $system): RedirectResponse
+    {
+        $name = $system->name;
+
+        // No borra nada en la base de datos remota del sistema: solo quita
+        // el registro/config de este sistema en el IAM. Las cuentas y
+        // solicitudes locales asociadas se borran en cascada (FK), pero las
+        // cuentas reales del sistema remoto quedan intactas.
+        DB::purge("sysentry_{$system->id}");
+        $system->delete();
+
+        return redirect()->route('systems.index')->with('success', "Sistema \"{$name}\" eliminado del IAM.");
+    }
+
     public function toggleVisibility(SystemEntry $system): RedirectResponse
     {
         $system->update(['visible_in_public_form' => ! $system->visible_in_public_form]);

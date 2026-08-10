@@ -6,14 +6,39 @@ import TextInput from '@/Components/TextInput.vue';
 import InputError from '@/Components/InputError.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import SecondaryButton from '@/Components/SecondaryButton.vue';
+import DangerButton from '@/Components/DangerButton.vue';
 import { Head, router, useForm, usePage } from '@inertiajs/vue3';
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 
 const props = defineProps({
     systems: Array,
 });
 
 const page = usePage();
+
+const q = ref('');
+const statusFilter = ref('');
+const visibilityFilter = ref('');
+
+const filteredSystems = computed(() => {
+    const term = q.value.trim().toLowerCase();
+
+    return props.systems.filter((s) => {
+        if (term && !s.name.toLowerCase().includes(term) && !s.key.toLowerCase().includes(term)) {
+            return false;
+        }
+        if (statusFilter.value && s.status !== statusFilter.value) {
+            return false;
+        }
+        if (visibilityFilter.value === 'visible' && !s.visible_in_public_form) {
+            return false;
+        }
+        if (visibilityFilter.value === 'oculto' && s.visible_in_public_form) {
+            return false;
+        }
+        return true;
+    });
+});
 
 const showRoles = ref(false);
 const rolesLoading = ref(false);
@@ -51,6 +76,27 @@ function toggleVisibility(system) {
     router.patch(route('systems.toggle-visibility', system.id), {}, {
         preserveScroll: true,
         onFinish: () => (togglingVisibility.value = null),
+    });
+}
+
+const showDelete = ref(false);
+const deletingSystem = ref(null);
+const deleteForm = useForm({});
+
+function confirmDelete(system) {
+    deletingSystem.value = system;
+    showDelete.value = true;
+}
+
+function closeDelete() {
+    showDelete.value = false;
+    deletingSystem.value = null;
+}
+
+function destroySystem() {
+    deleteForm.delete(route('systems.destroy', deletingSystem.value.id), {
+        preserveScroll: true,
+        onSuccess: () => closeDelete(),
     });
 }
 
@@ -238,6 +284,33 @@ async function testConnection() {
                     {{ page.props.flash.success }}
                 </div>
 
+                <!-- Filtros -->
+                <div class="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:flex-row sm:items-center">
+                    <input
+                        v-model="q"
+                        type="text"
+                        placeholder="Buscar por nombre o clave..."
+                        class="w-full rounded-md border-slate-300 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 sm:max-w-xs"
+                    />
+                    <select
+                        v-model="statusFilter"
+                        class="w-full rounded-md border-slate-300 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 sm:max-w-[10rem]"
+                    >
+                        <option value="">Todos los estados</option>
+                        <option value="active">Activo</option>
+                        <option value="pending">Pendiente</option>
+                    </select>
+                    <select
+                        v-model="visibilityFilter"
+                        class="w-full rounded-md border-slate-300 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 sm:max-w-[12rem]"
+                    >
+                        <option value="">Solicitud pública: todos</option>
+                        <option value="visible">Solo visibles</option>
+                        <option value="oculto">Solo ocultos</option>
+                    </select>
+                    <span class="text-xs text-slate-400 sm:ml-auto">{{ filteredSystems.length }} de {{ systems.length }}</span>
+                </div>
+
                 <div class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
                     <table class="min-w-full divide-y divide-slate-200 dark:divide-slate-800">
                         <thead class="bg-slate-50 dark:bg-slate-900/60">
@@ -250,7 +323,7 @@ async function testConnection() {
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
-                            <tr v-for="system in systems" :key="system.id">
+                            <tr v-for="system in filteredSystems" :key="system.id">
                                 <td class="px-4 py-3 align-top">
                                     <div class="text-sm font-medium text-slate-800 dark:text-slate-100">{{ system.name }}</div>
                                     <div class="text-xs text-slate-400">{{ system.key }}</div>
@@ -304,12 +377,18 @@ async function testConnection() {
                                         >
                                             Editar
                                         </button>
+                                        <button
+                                            @click="confirmDelete(system)"
+                                            class="rounded-md border border-red-300 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-950"
+                                        >
+                                            Eliminar
+                                        </button>
                                     </div>
                                 </td>
                             </tr>
-                            <tr v-if="!systems.length">
+                            <tr v-if="!filteredSystems.length">
                                 <td colspan="5" class="px-4 py-10 text-center text-sm text-slate-400">
-                                    No hay sistemas registrados.
+                                    {{ systems.length ? 'Ningún sistema coincide con el filtro.' : 'No hay sistemas registrados.' }}
                                 </td>
                             </tr>
                         </tbody>
@@ -574,6 +653,28 @@ async function testConnection() {
                     </PrimaryButton>
                 </div>
             </form>
+        </Modal>
+
+        <!-- Modal confirmar eliminación -->
+        <Modal :show="showDelete" @close="closeDelete" max-width="sm">
+            <div class="p-6">
+                <h3 class="text-lg font-medium text-slate-900 dark:text-slate-100">
+                    ¿Eliminar "{{ deletingSystem?.name }}" del IAM?
+                </h3>
+                <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">
+                    Se borra la configuración de este sistema y su historial local (cuentas registradas y solicitudes
+                    de acceso asociadas). <strong>No borra nada en la base de datos real del sistema</strong> — las
+                    cuentas que ya existen ahí siguen intactas, solo dejan de administrarse desde este panel. No se
+                    puede deshacer.
+                </p>
+
+                <div class="mt-6 flex justify-end gap-3">
+                    <SecondaryButton @click="closeDelete">Cancelar</SecondaryButton>
+                    <DangerButton :class="{ 'opacity-25': deleteForm.processing }" :disabled="deleteForm.processing" @click="destroySystem">
+                        Eliminar
+                    </DangerButton>
+                </div>
+            </div>
         </Modal>
     </AuthenticatedLayout>
 </template>
