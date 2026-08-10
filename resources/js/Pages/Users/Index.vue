@@ -1,8 +1,8 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import Modal from '@/Components/Modal.vue';
-import { Head, Link, router, usePage } from '@inertiajs/vue3';
-import { ref } from 'vue';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
+import { reactive, ref } from 'vue';
 
 const props = defineProps({
     people: Object,
@@ -288,6 +288,108 @@ async function removeRole(account, role) {
     }
 }
 
+// Modal "Añadir sistemas" (persona ya existente, cuentas en sistemas nuevos)
+const showAddSystems = ref(false);
+const addSystemsPerson = ref(null);
+const addRolesState = reactive({});
+const addExtraFieldsState = reactive({});
+
+const addForm = useForm({
+    name: '',
+    email: '',
+    password: '',
+    systems: [], // [{ system_id, role_id, role_name, alias, extra_fields }]
+});
+
+function availableSystemsFor(person) {
+    const already = new Set(person.accounts.map((a) => a.system_key));
+    return props.systems.filter((s) => s.status === 'active' && !already.has(s.key));
+}
+
+function openAddSystems(person) {
+    addSystemsPerson.value = person;
+    addForm.reset();
+    addForm.clearErrors();
+    addForm.name = person.name;
+    addForm.email = person.accounts[0]?.email ?? '';
+    showAddSystems.value = true;
+}
+
+function closeAddSystems() {
+    showAddSystems.value = false;
+    addSystemsPerson.value = null;
+}
+
+function isAddChecked(systemId) {
+    return addForm.systems.some((s) => s.system_id === systemId);
+}
+
+function addEntryFor(systemId) {
+    return addForm.systems.find((s) => s.system_id === systemId);
+}
+
+async function toggleAddSystem(system) {
+    const idx = addForm.systems.findIndex((s) => s.system_id === system.id);
+
+    if (idx !== -1) {
+        addForm.systems.splice(idx, 1);
+        return;
+    }
+
+    addForm.systems.push({ system_id: system.id, role_id: null, role_name: null, alias: '', extra_fields: {} });
+
+    if (!addRolesState[system.id]) {
+        addRolesState[system.id] = { loading: true, roles: [] };
+        try {
+            const res = await fetch(route('users.roles', system.id, false));
+            const data = await res.json();
+            addRolesState[system.id] = { loading: false, roles: data.roles ?? [] };
+        } catch (e) {
+            addRolesState[system.id] = { loading: false, roles: [] };
+        }
+    }
+
+    if (!addExtraFieldsState[system.id]) {
+        addExtraFieldsState[system.id] = { loading: true, fields: [] };
+        try {
+            const res = await fetch(route('users.extra-fields', system.id, false));
+            const data = await res.json();
+            addExtraFieldsState[system.id] = { loading: false, fields: data.fields ?? [] };
+        } catch (e) {
+            addExtraFieldsState[system.id] = { loading: false, fields: [] };
+        }
+    }
+}
+
+function setAddRole(systemId, role) {
+    const entry = addEntryFor(systemId);
+    if (entry) {
+        entry.role_id = role ? role.id : null;
+        entry.role_name = role ? role.name : null;
+    }
+}
+
+function setAddExtraField(systemId, column, value) {
+    const entry = addEntryFor(systemId);
+    if (entry) entry.extra_fields[column] = value;
+}
+
+function toggleAddExtraFieldValue(systemId, column, value, checked) {
+    const entry = addEntryFor(systemId);
+    if (!entry) return;
+
+    const current = Array.isArray(entry.extra_fields[column]) ? entry.extra_fields[column] : [];
+    entry.extra_fields[column] = checked
+        ? [...current, value]
+        : current.filter((v) => v !== value);
+}
+
+function submitAddSystems() {
+    addForm.post(route('users.store'), {
+        onSuccess: () => closeAddSystems(),
+    });
+}
+
 function formatDate(value) {
     if (!value) return '—';
     const d = new Date(value.replace(' ', 'T'));
@@ -415,6 +517,13 @@ function formatDate(value) {
                                             class="rounded-md border border-indigo-300 px-3 py-1 text-xs font-medium text-indigo-600 hover:bg-indigo-50 dark:border-indigo-700 dark:text-indigo-400 dark:hover:bg-indigo-950"
                                         >
                                             Editar
+                                        </button>
+                                        <button
+                                            @click="openAddSystems(person)"
+                                            :disabled="!availableSystemsFor(person).length"
+                                            class="rounded-md border border-emerald-300 px-3 py-1 text-xs font-medium text-emerald-600 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-950"
+                                        >
+                                            + Añadir
                                         </button>
                                     </div>
                                 </td>
@@ -667,6 +776,170 @@ function formatDate(value) {
                     </div>
                 </div>
             </div>
+        </Modal>
+
+        <!-- Modal "Añadir sistemas" -->
+        <Modal :show="showAddSystems" @close="closeAddSystems" max-width="2xl">
+            <form @submit.prevent="submitAddSystems" class="max-h-[85vh] overflow-y-auto p-6">
+                <div class="mb-4 flex items-center justify-between">
+                    <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100">
+                        Añadir sistemas — {{ addSystemsPerson?.name }}
+                    </h3>
+                    <button type="button" @click="closeAddSystems" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">✕</button>
+                </div>
+
+                <div class="space-y-4">
+                    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div>
+                            <label class="text-xs text-gray-400">Nombre</label>
+                            <input
+                                v-model="addForm.name"
+                                type="text"
+                                class="mt-1 block w-full rounded-md border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200"
+                                required
+                            />
+                        </div>
+                        <div>
+                            <label class="text-xs text-gray-400">Correo</label>
+                            <input
+                                v-model="addForm.email"
+                                type="email"
+                                class="mt-1 block w-full rounded-md border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200"
+                                required
+                            />
+                            <p class="mt-1 text-xs text-gray-400">
+                                Si ya existe una persona con este correo en el IAM, se reutiliza en vez de duplicarla.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="text-xs text-gray-400">Contraseña inicial (para los sistemas nuevos)</label>
+                        <input
+                            v-model="addForm.password"
+                            type="password"
+                            class="mt-1 block w-full max-w-xs rounded-md border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200"
+                            minlength="8"
+                            autocomplete="new-password"
+                            required
+                        />
+                        <p v-if="addForm.errors.password" class="mt-1 text-xs text-red-500">{{ addForm.errors.password }}</p>
+                    </div>
+
+                    <div>
+                        <label class="text-xs text-gray-400">Sistemas donde todavía no tiene cuenta</label>
+                        <p v-if="addForm.errors.systems" class="mt-1 text-xs text-red-500">{{ addForm.errors.systems }}</p>
+
+                        <div class="mt-2 divide-y divide-gray-100 rounded-md border border-gray-200 dark:divide-gray-700 dark:border-gray-700">
+                            <div v-if="addSystemsPerson && !availableSystemsFor(addSystemsPerson).length" class="p-4 text-sm text-gray-400">
+                                Ya tiene cuenta en todos los sistemas activos.
+                            </div>
+
+                            <div
+                                v-for="system in (addSystemsPerson ? availableSystemsFor(addSystemsPerson) : [])"
+                                :key="system.id"
+                                class="flex flex-col gap-2 p-3"
+                            >
+                                <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                    <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
+                                        <input
+                                            type="checkbox"
+                                            :checked="isAddChecked(system.id)"
+                                            @change="toggleAddSystem(system)"
+                                            class="rounded border-gray-300 text-gray-800 focus:ring-gray-500"
+                                        />
+                                        {{ system.name }}
+                                    </label>
+
+                                    <div v-if="isAddChecked(system.id)" class="sm:w-56">
+                                        <select
+                                            class="w-full rounded-md border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200"
+                                            :disabled="addRolesState[system.id]?.loading"
+                                            @change="setAddRole(system.id, addRolesState[system.id]?.roles.find(r => String(r.id) === $event.target.value))"
+                                        >
+                                            <option value="">
+                                                {{ addRolesState[system.id]?.loading ? 'Cargando roles...' : 'Sin rol' }}
+                                            </option>
+                                            <option v-for="role in addRolesState[system.id]?.roles ?? []" :key="role.id" :value="role.id">
+                                                {{ role.name }}
+                                            </option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div v-if="isAddChecked(system.id) && system.alias_column" class="sm:max-w-xs">
+                                    <input
+                                        v-model="addEntryFor(system.id).alias"
+                                        type="text"
+                                        placeholder="Alias (opcional)"
+                                        class="w-full rounded-md border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200"
+                                    />
+                                </div>
+
+                                <div
+                                    v-if="isAddChecked(system.id) && addExtraFieldsState[system.id]?.fields.length"
+                                    class="grid grid-cols-1 gap-3 rounded-md bg-gray-50 p-3 dark:bg-gray-900/40 sm:grid-cols-2"
+                                >
+                                    <div v-for="field in addExtraFieldsState[system.id].fields" :key="field.column">
+                                        <label class="text-xs text-gray-500 dark:text-gray-400">
+                                            {{ field.label }}<span v-if="field.required" class="text-red-500">*</span>
+                                        </label>
+
+                                        <select
+                                            v-if="field.type === 'select'"
+                                            class="mt-1 w-full rounded-md border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200"
+                                            :required="field.required"
+                                            @change="setAddExtraField(system.id, field.column, $event.target.value)"
+                                        >
+                                            <option value="">Seleccionar...</option>
+                                            <option v-for="opt in field.options ?? []" :key="opt.value" :value="opt.value">
+                                                {{ opt.label }}
+                                            </option>
+                                        </select>
+
+                                        <div v-else-if="field.type === 'multiselect'" class="mt-1 flex flex-wrap gap-2">
+                                            <label
+                                                v-for="opt in field.options ?? []"
+                                                :key="opt.value"
+                                                class="flex items-center gap-1 rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-600 dark:border-gray-700 dark:text-gray-300"
+                                            >
+                                                <input
+                                                    type="checkbox"
+                                                    class="rounded border-gray-300 text-gray-800 focus:ring-gray-500"
+                                                    @change="toggleAddExtraFieldValue(system.id, field.column, opt.value, $event.target.checked)"
+                                                />
+                                                {{ opt.label }}
+                                            </label>
+                                        </div>
+
+                                        <input
+                                            v-else
+                                            :type="field.type === 'date' ? 'date' : 'text'"
+                                            class="mt-1 w-full rounded-md border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200"
+                                            :required="field.required"
+                                            @input="setAddExtraField(system.id, field.column, $event.target.value)"
+                                        />
+                                    </div>
+                                </div>
+                                <p v-else-if="isAddChecked(system.id) && addExtraFieldsState[system.id]?.loading" class="text-xs text-gray-400">
+                                    Cargando campos adicionales...
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-6 flex items-center gap-3 border-t border-gray-100 pt-4 dark:border-gray-700">
+                    <button
+                        type="submit"
+                        :disabled="addForm.processing || !addForm.systems.length"
+                        class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-40 dark:bg-gray-200 dark:text-gray-800"
+                    >
+                        Añadir a los sistemas seleccionados
+                    </button>
+                    <span v-if="addForm.processing" class="text-sm text-gray-400">Aprovisionando...</span>
+                </div>
+            </form>
         </Modal>
     </AuthenticatedLayout>
 </template>

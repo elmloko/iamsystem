@@ -33,7 +33,7 @@ class UserManagementController extends Controller
 
         return Inertia::render('Users/Index', [
             'people' => $people,
-            'systems' => SystemEntry::orderBy('name')->get(['id', 'key', 'name', 'status']),
+            'systems' => SystemEntry::orderBy('name')->get(['id', 'key', 'name', 'status', 'alias_column']),
             'filters' => $request->only(['q', 'system', 'status']),
         ]);
     }
