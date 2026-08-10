@@ -19,12 +19,13 @@ class SystemEntry extends Model
         'active_column', 'active_type', 'active_values',
         'alias_column',
         'db_driver', 'db_host', 'db_port', 'db_database', 'db_username', 'db_password',
-        'extra_fields', 'visible_in_public_form',
+        'extra_fields', 'visible_in_public_form', 'public_form_restrictions',
     ];
 
     protected $casts = [
         'db_password' => 'encrypted',
         'extra_fields' => 'array',
+        'public_form_restrictions' => 'array',
     ];
 
     public function accounts(): HasMany

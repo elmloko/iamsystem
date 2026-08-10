@@ -89,9 +89,18 @@ class SystemAccountProvisioner
      */
     public function fetchPublicRoles(SystemEntry $system): Collection
     {
-        return $this->fetchRoles($system)
-            ->reject(fn ($role) => str_contains(mb_strtolower((string) $role->name), 'admin'))
-            ->values();
+        $roles = $this->fetchRoles($system)
+            ->reject(fn ($role) => str_contains(mb_strtolower((string) $role->name), 'admin'));
+
+        $restrictedRole = $system->public_form_restrictions['role_name'] ?? null;
+
+        if ($restrictedRole) {
+            $roles = $roles->filter(
+                fn ($role) => mb_strtolower(trim((string) $role->name)) === mb_strtolower(trim($restrictedRole))
+            );
+        }
+
+        return $roles->values();
     }
 
     /**
@@ -127,6 +136,41 @@ class SystemAccountProvisioner
 
             return $field;
         }, $system->extra_fields);
+    }
+
+    /**
+     * Igual que resolveExtraFields(), pero para el formulario público: si el
+     * sistema tiene una restricción configurada para una columna (ver
+     * systems.public_form_restrictions), sus opciones se recortan a solo la
+     * que coincide (por etiqueta o valor) — así en el público solo se puede
+     * elegir, por ejemplo, "Personal dependiente" y no "Personal de planta".
+     */
+    public function resolvePublicExtraFields(SystemEntry $system): array
+    {
+        $fields = $this->resolveExtraFields($system);
+        $restrictions = $system->public_form_restrictions['extra_fields'] ?? [];
+
+        if (empty($restrictions)) {
+            return $fields;
+        }
+
+        return array_map(function (array $field) use ($restrictions) {
+            if (! isset($restrictions[$field['column']]) || empty($field['options'])) {
+                return $field;
+            }
+
+            $wanted = mb_strtolower(trim((string) $restrictions[$field['column']]));
+
+            $field['options'] = array_values(array_filter($field['options'], function ($opt) use ($wanted) {
+                $opt = (array) $opt;
+                $label = mb_strtolower(trim((string) ($opt['label'] ?? '')));
+                $value = mb_strtolower(trim((string) ($opt['value'] ?? '')));
+
+                return $label === $wanted || $value === $wanted;
+            }));
+
+            return $field;
+        }, $fields);
     }
 
     /**

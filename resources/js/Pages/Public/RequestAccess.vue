@@ -51,6 +51,12 @@ async function toggleSystem(system) {
         }
     }
 
+    // Si el sistema solo tiene un rol disponible (restringido en público), se
+    // deja puesto de una — no tiene sentido hacer elegir algo sin opciones.
+    if (rolesState[system.id].roles.length === 1) {
+        setRole(system.id, rolesState[system.id].roles[0]);
+    }
+
     if (!extraFieldsState[system.id]) {
         extraFieldsState[system.id] = { loading: true, fields: [] };
         try {
@@ -59,6 +65,14 @@ async function toggleSystem(system) {
             extraFieldsState[system.id] = { loading: false, fields: data.fields ?? [] };
         } catch (e) {
             extraFieldsState[system.id] = { loading: false, fields: [] };
+        }
+    }
+
+    // Mismo criterio para los campos extra: si el select quedó con una sola
+    // opción posible, se autocompleta en vez de mostrar un selector vacío.
+    for (const field of extraFieldsState[system.id].fields) {
+        if (field.type === 'select' && (field.options ?? []).length === 1) {
+            setExtraField(system.id, field.column, field.options[0].value);
         }
     }
 }
@@ -172,6 +186,7 @@ function submit() {
                                     <select
                                         class="w-full rounded-md border-slate-300 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
                                         :disabled="rolesState[system.id]?.loading"
+                                        :value="entryFor(system.id)?.role_id ?? ''"
                                         @change="setRole(system.id, rolesState[system.id]?.roles.find(r => String(r.id) === $event.target.value))"
                                     >
                                         <option value="">
@@ -206,6 +221,7 @@ function submit() {
                                         v-if="field.type === 'select'"
                                         class="mt-1 w-full rounded-md border-slate-300 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
                                         :required="field.required"
+                                        :value="entryFor(system.id)?.extra_fields[field.column] ?? ''"
                                         @change="setExtraField(system.id, field.column, $event.target.value)"
                                     >
                                         <option value="">Seleccionar...</option>

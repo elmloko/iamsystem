@@ -38,11 +38,11 @@ class PublicAccessRequestController extends Controller
         abort_unless($system->visible_in_public_form, 404);
 
         return response()->json([
-            'fields' => $provisioner->resolveExtraFields($system),
+            'fields' => $provisioner->resolvePublicExtraFields($system),
         ]);
     }
 
-    public function store(Request $request): RedirectResponse
+    public function store(Request $request, SystemAccountProvisioner $provisioner): RedirectResponse
     {
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
@@ -65,6 +65,42 @@ class PublicAccessRequestController extends Controller
                 throw ValidationException::withMessages([
                     'systems' => 'Uno de los sistemas seleccionados ya no está disponible para solicitar acceso.',
                 ]);
+            }
+
+            // Defensa contra manipular el formulario a mano: si el rol o un
+            // campo tiene una sola opción permitida en público, el valor
+            // enviado tiene que ser justo esa (no cualquier id que exista en
+            // el sistema real).
+            if (filled($entry['role_id'] ?? null)) {
+                $allowedRoles = $provisioner->fetchPublicRoles($system)->pluck('id')->map(fn ($id) => (string) $id);
+
+                if (! $allowedRoles->contains((string) $entry['role_id'])) {
+                    throw ValidationException::withMessages([
+                        'systems' => "Ese rol no está disponible para {$system->name}.",
+                    ]);
+                }
+            }
+
+            foreach ($provisioner->resolvePublicExtraFields($system) as $field) {
+                if (empty($field['options'])) {
+                    continue;
+                }
+
+                $submitted = $entry['extra_fields'][$field['column']] ?? null;
+                if ($submitted === null || $submitted === '') {
+                    continue;
+                }
+
+                $allowedValues = collect($field['options'])->map(fn ($opt) => (string) ((array) $opt)['value']);
+                $submittedValues = is_array($submitted) ? $submitted : [$submitted];
+
+                foreach ($submittedValues as $v) {
+                    if (! $allowedValues->contains((string) $v)) {
+                        throw ValidationException::withMessages([
+                            'systems' => "\"{$field['label']}\" tiene un valor no permitido para {$system->name}.",
+                        ]);
+                    }
+                }
             }
 
             foreach ($system?->extra_fields ?? [] as $field) {
