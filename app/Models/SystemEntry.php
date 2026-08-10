@@ -19,7 +19,7 @@ class SystemEntry extends Model
         'active_column', 'active_type', 'active_values',
         'alias_column',
         'db_driver', 'db_host', 'db_port', 'db_database', 'db_username', 'db_password',
-        'extra_fields',
+        'extra_fields', 'visible_in_public_form',
     ];
 
     protected $casts = [

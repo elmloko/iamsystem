@@ -17,6 +17,7 @@ class PublicAccessRequestController extends Controller
     {
         return Inertia::render('Public/RequestAccess', [
             'systems' => SystemEntry::where('status', 'active')
+                ->where('visible_in_public_form', true)
                 ->connectable()
                 ->orderBy('name')
                 ->get(['id', 'key', 'name', 'alias_column']),
@@ -25,6 +26,8 @@ class PublicAccessRequestController extends Controller
 
     public function rolesFor(SystemEntry $system, SystemAccountProvisioner $provisioner)
     {
+        abort_unless($system->visible_in_public_form, 404);
+
         return response()->json([
             'roles' => $provisioner->fetchPublicRoles($system),
         ]);
@@ -32,6 +35,8 @@ class PublicAccessRequestController extends Controller
 
     public function extraFieldsFor(SystemEntry $system, SystemAccountProvisioner $provisioner)
     {
+        abort_unless($system->visible_in_public_form, 404);
+
         return response()->json([
             'fields' => $provisioner->resolveExtraFields($system),
         ]);
@@ -55,6 +60,12 @@ class PublicAccessRequestController extends Controller
         // aparte (igual que en la creación interna).
         foreach ($data['systems'] as $entry) {
             $system = SystemEntry::find($entry['system_id']);
+
+            if (! $system || ! $system->visible_in_public_form) {
+                throw ValidationException::withMessages([
+                    'systems' => 'Uno de los sistemas seleccionados ya no está disponible para solicitar acceso.',
+                ]);
+            }
 
             foreach ($system?->extra_fields ?? [] as $field) {
                 if (! ($field['required'] ?? false)) {

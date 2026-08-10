@@ -17,7 +17,7 @@ class SystemController extends Controller
     public function index(): Response
     {
         $systems = SystemEntry::orderBy('name')->get([
-            'id', 'key', 'name', 'status', 'connection', 'notes',
+            'id', 'key', 'name', 'status', 'connection', 'notes', 'visible_in_public_form',
             'users_table', 'name_column', 'last_name_column', 'email_column', 'password_column', 'password_hash_algo', 'model_type',
             'roles_table', 'role_column', 'role_json_column',
             'role_pivot_table', 'role_pivot_user_column', 'role_pivot_role_column',
@@ -69,6 +69,15 @@ class SystemController extends Controller
         DB::purge("sysentry_{$system->id}");
 
         return redirect()->route('systems.index')->with('success', "Sistema \"{$system->name}\" actualizado.");
+    }
+
+    public function toggleVisibility(SystemEntry $system): RedirectResponse
+    {
+        $system->update(['visible_in_public_form' => ! $system->visible_in_public_form]);
+
+        $verb = $system->visible_in_public_form ? 'visible' : 'oculto';
+
+        return back()->with('success', "\"{$system->name}\" ahora está {$verb} en el formulario público de solicitud.");
     }
 
     private function validatedPayload(Request $request, bool $isCreate = false): array

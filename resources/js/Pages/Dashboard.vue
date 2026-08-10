@@ -11,49 +11,69 @@ const page = usePage();
 
 const cards = [
     {
+        label: 'Solicitudes pendientes',
+        value: () => props.stats.pendingRequests,
+        icon: 'inbox',
+        href: () => route('access-requests.index'),
+        accent: (n) => n > 0
+            ? 'bg-amber-50 text-amber-600 dark:bg-amber-950 dark:text-amber-400'
+            : 'bg-slate-50 text-slate-400 dark:bg-slate-800 dark:text-slate-500',
+    },
+    {
         label: 'Sistemas activos',
         value: () => props.stats.systemsActive,
         icon: 'check',
-        accent: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400',
+        href: () => route('systems.index'),
+        accent: () => 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400',
     },
     {
         label: 'Sistemas pendientes',
         value: () => props.stats.systemsPending,
         icon: 'clock',
-        accent: 'bg-amber-50 text-amber-600 dark:bg-amber-950 dark:text-amber-400',
+        href: () => route('systems.index'),
+        accent: () => 'bg-amber-50 text-amber-600 dark:bg-amber-950 dark:text-amber-400',
     },
     {
-        label: 'Personas registradas',
+        label: 'Cuentas en sistemas conectados',
+        value: () => props.stats.liveAccounts,
+        icon: 'key',
+        href: () => route('users.index'),
+        accent: () => 'bg-sky-50 text-sky-600 dark:bg-sky-950 dark:text-sky-400',
+    },
+    {
+        label: 'Personas creadas por el IAM',
         value: () => props.stats.people,
         icon: 'users',
-        accent: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-400',
-    },
-    {
-        label: 'Cuentas provisionadas',
-        value: () => props.stats.accounts,
-        icon: 'key',
-        accent: 'bg-sky-50 text-sky-600 dark:bg-sky-950 dark:text-sky-400',
+        href: () => route('users.index'),
+        accent: () => 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-400',
     },
 ];
 
 const quickLinks = [
     {
-        title: 'Sistemas',
-        description: 'Consulta el estado y los roles de cada sistema conectado.',
-        href: () => route('systems.index'),
-        cta: 'Ver sistemas',
+        title: 'Solicitudes',
+        description: 'Revisa y aprueba, sistema por sistema, los accesos que la gente pidió.',
+        href: () => route('access-requests.index'),
+        cta: 'Ver solicitudes',
+        badge: () => (props.stats.pendingRequests > 0 ? props.stats.pendingRequests : null),
     },
     {
-        title: 'Usuarios',
+        title: 'Administrador de Usuarios',
         description: 'Consulta y filtra las personas provisionadas por sistema.',
         href: () => route('users.index'),
         cta: 'Ver usuarios',
     },
     {
-        title: 'Crear usuario',
-        description: 'Da de alta una persona en uno o varios sistemas a la vez.',
-        href: () => route('users.create'),
-        cta: 'Crear usuario',
+        title: 'Sistemas',
+        description: 'Consulta el estado, la conexión y los roles de cada sistema.',
+        href: () => route('systems.index'),
+        cta: 'Ver sistemas',
+    },
+    {
+        title: 'Usuarios internos',
+        description: 'Cuentas que pueden entrar a este panel IAM.',
+        href: () => route('admins.index'),
+        cta: 'Ver usuarios internos',
     },
 ];
 </script>
@@ -80,14 +100,19 @@ const quickLinks = [
                 </div>
 
                 <!-- Tarjetas de estadísticas -->
-                <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                    <div
+                <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+                    <Link
                         v-for="card in cards"
                         :key="card.label"
-                        class="flex items-center gap-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900"
+                        :href="card.href()"
+                        class="flex items-center gap-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-indigo-300 hover:shadow-md dark:border-slate-800 dark:bg-slate-900 dark:hover:border-indigo-700"
                     >
-                        <div :class="['flex h-11 w-11 shrink-0 items-center justify-center rounded-lg', card.accent]">
-                            <svg v-if="card.icon === 'check'" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <div :class="['flex h-11 w-11 shrink-0 items-center justify-center rounded-lg', card.accent(card.value())]">
+                            <svg v-if="card.icon === 'inbox'" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                <path d="M3 4a1 1 0 011-1h12a1 1 0 011 1l1.5 7H14a1 1 0 00-.9.55L12 14H8l-1.1-2.45A1 1 0 006 11H1.5L3 4z" />
+                                <path d="M1.5 12.5V15a1 1 0 001 1h15a1 1 0 001-1v-2.5h-4.13l-.98 1.96a1 1 0 01-.9.54h-5a1 1 0 01-.9-.54l-.98-1.96H1.5z" />
+                            </svg>
+                            <svg v-else-if="card.icon === 'check'" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
                                 <path fill-rule="evenodd" d="M16.7 5.3a1 1 0 010 1.4l-7.4 7.4a1 1 0 01-1.4 0L3.3 9.5a1 1 0 111.4-1.4l3.6 3.6 6.7-6.7a1 1 0 011.4 0z" clip-rule="evenodd" />
                             </svg>
                             <svg v-else-if="card.icon === 'clock'" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
@@ -105,7 +130,7 @@ const quickLinks = [
                             <p class="text-2xl font-semibold text-slate-900 dark:text-white">{{ card.value() }}</p>
                             <p class="text-sm text-slate-500 dark:text-slate-400">{{ card.label }}</p>
                         </div>
-                    </div>
+                    </Link>
                 </div>
 
                 <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -121,7 +146,15 @@ const quickLinks = [
                                 :href="link.href()"
                                 class="group flex flex-col rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-indigo-300 hover:shadow-md dark:border-slate-800 dark:bg-slate-900 dark:hover:border-indigo-700"
                             >
-                                <span class="font-medium text-slate-900 dark:text-white">{{ link.title }}</span>
+                                <span class="flex items-center gap-2 font-medium text-slate-900 dark:text-white">
+                                    {{ link.title }}
+                                    <span
+                                        v-if="link.badge && link.badge()"
+                                        class="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800 dark:bg-amber-900 dark:text-amber-200"
+                                    >
+                                        {{ link.badge() }}
+                                    </span>
+                                </span>
                                 <span class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{ link.description }}</span>
                                 <span class="mt-4 inline-flex items-center text-sm font-medium text-indigo-600 group-hover:text-indigo-500 dark:text-indigo-400">
                                     {{ link.cta }}
@@ -135,9 +168,14 @@ const quickLinks = [
 
                     <!-- Estado de sistemas -->
                     <div class="space-y-4">
-                        <h3 class="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                            Sistemas conectados
-                        </h3>
+                        <div class="flex items-center justify-between">
+                            <h3 class="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                                Sistemas conectados
+                            </h3>
+                            <Link :href="route('systems.index')" class="text-xs font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400">
+                                Ver todos
+                            </Link>
+                        </div>
                         <div class="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
                             <ul class="max-h-80 divide-y divide-slate-100 overflow-y-auto dark:divide-slate-800">
                                 <li

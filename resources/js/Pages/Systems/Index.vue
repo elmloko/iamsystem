@@ -6,7 +6,7 @@ import TextInput from '@/Components/TextInput.vue';
 import InputError from '@/Components/InputError.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import SecondaryButton from '@/Components/SecondaryButton.vue';
-import { Head, useForm, usePage } from '@inertiajs/vue3';
+import { Head, router, useForm, usePage } from '@inertiajs/vue3';
 import { ref } from 'vue';
 
 const props = defineProps({
@@ -42,6 +42,16 @@ async function openRoles(system) {
 
 function closeRoles() {
     showRoles.value = false;
+}
+
+const togglingVisibility = ref(null);
+
+function toggleVisibility(system) {
+    togglingVisibility.value = system.id;
+    router.patch(route('systems.toggle-visibility', system.id), {}, {
+        preserveScroll: true,
+        onFinish: () => (togglingVisibility.value = null),
+    });
 }
 
 function xsrfHeader() {
@@ -235,6 +245,7 @@ async function testConnection() {
                                 <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Sistema</th>
                                 <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Estado</th>
                                 <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Conexión</th>
+                                <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Solicitud pública</th>
                                 <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400"></th>
                             </tr>
                         </thead>
@@ -259,6 +270,18 @@ async function testConnection() {
                                 <td class="px-4 py-3 align-top text-sm text-slate-500 dark:text-slate-400">
                                     {{ system.db_host ? `${system.db_host} / ${system.db_database}` : (system.connection ?? '—') }}
                                 </td>
+                                <td class="px-4 py-3 align-top">
+                                    <span
+                                        :class="[
+                                            'inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium',
+                                            system.visible_in_public_form
+                                                ? 'bg-sky-100 text-sky-800 dark:bg-sky-900 dark:text-sky-200'
+                                                : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400',
+                                        ]"
+                                    >
+                                        {{ system.visible_in_public_form ? 'Visible' : 'Oculto' }}
+                                    </span>
+                                </td>
                                 <td class="px-4 py-3 text-right align-top">
                                     <div class="flex justify-end gap-2">
                                         <button
@@ -267,6 +290,13 @@ async function testConnection() {
                                             class="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
                                         >
                                             Ver roles
+                                        </button>
+                                        <button
+                                            @click="toggleVisibility(system)"
+                                            :disabled="togglingVisibility === system.id"
+                                            class="rounded-md border border-sky-300 px-3 py-1.5 text-xs font-medium text-sky-600 hover:bg-sky-50 disabled:opacity-40 dark:border-sky-700 dark:text-sky-400 dark:hover:bg-sky-950"
+                                        >
+                                            {{ system.visible_in_public_form ? 'Ocultar' : 'Mostrar' }}
                                         </button>
                                         <button
                                             @click="openEdit(system)"
@@ -278,7 +308,7 @@ async function testConnection() {
                                 </td>
                             </tr>
                             <tr v-if="!systems.length">
-                                <td colspan="4" class="px-4 py-10 text-center text-sm text-slate-400">
+                                <td colspan="5" class="px-4 py-10 text-center text-sm text-slate-400">
                                     No hay sistemas registrados.
                                 </td>
                             </tr>
