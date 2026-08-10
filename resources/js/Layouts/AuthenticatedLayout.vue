@@ -66,6 +66,12 @@ const showingNavigationDropdown = ref(false);
                                 >
                                     Usuarios internos
                                 </NavLink>
+                                <NavLink
+                                    :href="route('access-requests.create')"
+                                    :active="route().current('access-requests.create')"
+                                >
+                                    Solicitar
+                                </NavLink>
                             </div>
                         </div>
 
@@ -196,6 +202,12 @@ const showingNavigationDropdown = ref(false);
                             :active="route().current('admins.*')"
                         >
                             Usuarios internos
+                        </ResponsiveNavLink>
+                        <ResponsiveNavLink
+                            :href="route('access-requests.create')"
+                            :active="route().current('access-requests.create')"
+                        >
+                            Solicitar
                         </ResponsiveNavLink>
                     </div>
 
