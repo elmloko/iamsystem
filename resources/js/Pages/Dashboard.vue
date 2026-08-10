@@ -5,6 +5,9 @@ import { Head, Link, usePage } from '@inertiajs/vue3';
 const props = defineProps({
     stats: Object,
     systems: Array,
+    topSystems: Array,
+    mostRequestedSystems: Array,
+    recentActivity: Array,
 });
 
 const page = usePage();
@@ -49,33 +52,45 @@ const cards = [
     },
 ];
 
-const quickLinks = [
-    {
-        title: 'Solicitudes',
-        description: 'Revisa y aprueba, sistema por sistema, los accesos que la gente pidió.',
-        href: () => route('access-requests.index'),
-        cta: 'Ver solicitudes',
-        badge: () => (props.stats.pendingRequests > 0 ? props.stats.pendingRequests : null),
-    },
-    {
-        title: 'Administrador de Usuarios',
-        description: 'Consulta y filtra las personas provisionadas por sistema.',
-        href: () => route('users.index'),
-        cta: 'Ver usuarios',
-    },
-    {
-        title: 'Sistemas',
-        description: 'Consulta el estado, la conexión y los roles de cada sistema.',
-        href: () => route('systems.index'),
-        cta: 'Ver sistemas',
-    },
-    {
-        title: 'Usuarios internos',
-        description: 'Cuentas que pueden entrar a este panel IAM.',
-        href: () => route('admins.index'),
-        cta: 'Ver usuarios internos',
-    },
-];
+const maxSystemCount = props.topSystems.length ? Math.max(...props.topSystems.map((s) => s.count)) : 0;
+
+function barWidth(count) {
+    if (!maxSystemCount) return '0%';
+    return `${Math.max(4, Math.round((count / maxSystemCount) * 100))}%`;
+}
+
+const maxRequestedCount = props.mostRequestedSystems.length
+    ? Math.max(...props.mostRequestedSystems.map((s) => s.count))
+    : 0;
+
+function requestedBarWidth(count) {
+    if (!maxRequestedCount) return '0%';
+    return `${Math.max(4, Math.round((count / maxRequestedCount) * 100))}%`;
+}
+
+const trackedAccounts = props.stats.activeAccounts + props.stats.inactiveAccounts;
+
+function accountStatusPercent(count) {
+    if (!trackedAccounts) return '0%';
+    return `${Math.max(0, Math.round((count / trackedAccounts) * 100))}%`;
+}
+
+function activityLabel(status) {
+    return status === 'approved' ? 'Aprobado' : 'Rechazado';
+}
+
+function activityClass(status) {
+    return status === 'approved'
+        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200'
+        : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
+}
+
+function formatDate(value) {
+    if (!value) return '—';
+    const d = new Date(value.replace(' ', 'T'));
+    if (isNaN(d)) return value;
+    return d.toLocaleString('es-BO', { dateStyle: 'medium', timeStyle: 'short' });
+}
 </script>
 
 <template>
@@ -134,35 +149,36 @@ const quickLinks = [
                 </div>
 
                 <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
-                    <!-- Accesos rápidos -->
+                    <!-- Sistemas con más cuentas -->
                     <div class="space-y-4 lg:col-span-2">
-                        <h3 class="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                            Accesos rápidos
-                        </h3>
-                        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                            <Link
-                                v-for="link in quickLinks"
-                                :key="link.title"
-                                :href="link.href()"
-                                class="group flex flex-col rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-indigo-300 hover:shadow-md dark:border-slate-800 dark:bg-slate-900 dark:hover:border-indigo-700"
-                            >
-                                <span class="flex items-center gap-2 font-medium text-slate-900 dark:text-white">
-                                    {{ link.title }}
-                                    <span
-                                        v-if="link.badge && link.badge()"
-                                        class="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800 dark:bg-amber-900 dark:text-amber-200"
-                                    >
-                                        {{ link.badge() }}
-                                    </span>
-                                </span>
-                                <span class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{ link.description }}</span>
-                                <span class="mt-4 inline-flex items-center text-sm font-medium text-indigo-600 group-hover:text-indigo-500 dark:text-indigo-400">
-                                    {{ link.cta }}
-                                    <svg class="ms-1 h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                                        <path fill-rule="evenodd" d="M7.3 14.7a1 1 0 010-1.4L10.6 10 7.3 6.7a1 1 0 111.4-1.4l4 4a1 1 0 010 1.4l-4 4a1 1 0 01-1.4 0z" clip-rule="evenodd" />
-                                    </svg>
-                                </span>
+                        <div class="flex items-center justify-between">
+                            <h3 class="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                                Sistemas con más cuentas
+                            </h3>
+                            <Link :href="route('users.index')" class="text-xs font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400">
+                                Ver usuarios
                             </Link>
+                        </div>
+                        <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                            <div v-if="!topSystems.length" class="py-6 text-center text-sm text-slate-400">
+                                Todavía no hay datos de cuentas para mostrar.
+                            </div>
+                            <ul v-else class="space-y-3">
+                                <li v-for="system in topSystems" :key="system.key" class="flex items-center gap-3">
+                                    <span class="w-36 shrink-0 truncate text-sm text-slate-600 dark:text-slate-300" :title="system.name">
+                                        {{ system.name }}
+                                    </span>
+                                    <div class="h-2.5 flex-1 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                                        <div
+                                            class="h-full rounded-full bg-indigo-500 dark:bg-indigo-400"
+                                            :style="{ width: barWidth(system.count) }"
+                                        />
+                                    </div>
+                                    <span class="w-14 shrink-0 text-right text-sm font-medium tabular-nums text-slate-800 dark:text-slate-100">
+                                        {{ system.count }}
+                                    </span>
+                                </li>
+                            </ul>
                         </div>
                     </div>
 
@@ -197,6 +213,122 @@ const quickLinks = [
                                 </li>
                             </ul>
                         </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                    <!-- Cuentas activas vs de baja -->
+                    <div class="space-y-4">
+                        <h3 class="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                            Cuentas activas vs. de baja
+                        </h3>
+                        <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                            <div v-if="!trackedAccounts" class="py-6 text-center text-sm text-slate-400">
+                                Ningún sistema conectado tiene una columna de estado mapeada todavía.
+                            </div>
+                            <div v-else class="space-y-4">
+                                <div class="flex h-3 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                                    <div
+                                        class="h-full bg-emerald-500 dark:bg-emerald-400"
+                                        :style="{ width: accountStatusPercent(stats.activeAccounts) }"
+                                    />
+                                    <div
+                                        class="h-full bg-red-400 dark:bg-red-500"
+                                        :style="{ width: accountStatusPercent(stats.inactiveAccounts) }"
+                                    />
+                                </div>
+                                <div class="flex items-center justify-between text-sm">
+                                    <div class="flex items-center gap-2">
+                                        <span class="h-2.5 w-2.5 rounded-full bg-emerald-500 dark:bg-emerald-400" />
+                                        <span class="text-slate-600 dark:text-slate-300">Activas</span>
+                                    </div>
+                                    <span class="font-medium tabular-nums text-slate-900 dark:text-white">
+                                        {{ stats.activeAccounts }} ({{ accountStatusPercent(stats.activeAccounts) }})
+                                    </span>
+                                </div>
+                                <div class="flex items-center justify-between text-sm">
+                                    <div class="flex items-center gap-2">
+                                        <span class="h-2.5 w-2.5 rounded-full bg-red-400 dark:bg-red-500" />
+                                        <span class="text-slate-600 dark:text-slate-300">De baja</span>
+                                    </div>
+                                    <span class="font-medium tabular-nums text-slate-900 dark:text-white">
+                                        {{ stats.inactiveAccounts }} ({{ accountStatusPercent(stats.inactiveAccounts) }})
+                                    </span>
+                                </div>
+                                <p class="text-xs text-slate-400">
+                                    Calculado sobre los sistemas conectados que tienen columna de estado mapeada en /sistemas.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Sistemas más solicitados -->
+                    <div class="space-y-4">
+                        <div class="flex items-center justify-between">
+                            <h3 class="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                                Sistemas más solicitados
+                            </h3>
+                            <Link :href="route('access-requests.index')" class="text-xs font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400">
+                                Ver solicitudes
+                            </Link>
+                        </div>
+                        <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                            <div v-if="!mostRequestedSystems.length" class="py-6 text-center text-sm text-slate-400">
+                                Todavía no hay solicitudes de acceso registradas.
+                            </div>
+                            <ul v-else class="space-y-3">
+                                <li v-for="system in mostRequestedSystems" :key="system.key" class="flex items-center gap-3">
+                                    <span class="w-36 shrink-0 truncate text-sm text-slate-600 dark:text-slate-300" :title="system.name">
+                                        {{ system.name }}
+                                    </span>
+                                    <div class="h-2.5 flex-1 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                                        <div
+                                            class="h-full rounded-full bg-fuchsia-500 dark:bg-fuchsia-400"
+                                            :style="{ width: requestedBarWidth(system.count) }"
+                                        />
+                                    </div>
+                                    <span class="w-14 shrink-0 text-right text-sm font-medium tabular-nums text-slate-800 dark:text-slate-100">
+                                        {{ system.count }}
+                                    </span>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Actividad reciente de solicitudes -->
+                <div class="space-y-4">
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                            Actividad reciente de solicitudes
+                        </h3>
+                        <Link :href="route('access-requests.index')" class="text-xs font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400">
+                            Ver solicitudes
+                        </Link>
+                    </div>
+                    <div class="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                        <div v-if="!recentActivity.length" class="py-8 text-center text-sm text-slate-400">
+                            Todavía no se aprobó ni rechazó ninguna solicitud.
+                        </div>
+                        <ul v-else class="divide-y divide-slate-100 dark:divide-slate-800">
+                            <li
+                                v-for="item in recentActivity"
+                                :key="item.id"
+                                class="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm"
+                            >
+                                <div class="flex items-center gap-2">
+                                    <span :class="['rounded-full px-2.5 py-1 text-xs font-medium', activityClass(item.status)]">
+                                        {{ activityLabel(item.status) }}
+                                    </span>
+                                    <span class="text-slate-700 dark:text-slate-200">{{ item.person_name }}</span>
+                                    <span class="text-slate-400">→</span>
+                                    <span class="text-slate-600 dark:text-slate-300">{{ item.system_name }}</span>
+                                </div>
+                                <span class="text-xs text-slate-400">
+                                    {{ item.decided_by_name ? `${item.decided_by_name} · ` : '' }}{{ formatDate(item.decided_at) }}
+                                </span>
+                            </li>
+                        </ul>
                     </div>
                 </div>
             </div>
