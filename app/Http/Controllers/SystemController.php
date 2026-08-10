@@ -22,7 +22,7 @@ class SystemController extends Controller
             'roles_table', 'role_column', 'role_json_column',
             'role_pivot_table', 'role_pivot_user_column', 'role_pivot_role_column',
             'active_column', 'active_type', 'active_values',
-            'alias_column',
+            'alias_column', 'hidden_roles',
             'db_driver', 'db_host', 'db_port', 'db_database', 'db_username', 'db_password',
         ])->map(function (SystemEntry $system) {
             $data = $system->toArray();
@@ -36,6 +36,7 @@ class SystemController extends Controller
             $data['active_values_text'] = $system->active_values
                 ? implode(', ', json_decode($system->active_values, true) ?? [])
                 : '';
+            $data['hidden_roles_text'] = $system->hidden_roles ? implode(', ', $system->hidden_roles) : '';
             unset($data['db_password']);
 
             return $data;
@@ -129,6 +130,8 @@ class SystemController extends Controller
             'active_values_text' => ['nullable', 'string'],
 
             'alias_column' => ['nullable', 'string', 'max:255'],
+
+            'hidden_roles_text' => ['nullable', 'string'],
         ];
 
         if ($isCreate) {
@@ -155,6 +158,10 @@ class SystemController extends Controller
             $data['active_values'] = $values ? json_encode($values) : null;
         }
         unset($data['active_values_text']);
+
+        $hiddenRoles = array_values(array_filter(array_map('trim', explode(',', $data['hidden_roles_text'] ?? ''))));
+        $data['hidden_roles'] = $hiddenRoles ?: null;
+        unset($data['hidden_roles_text']);
 
         return $data;
     }

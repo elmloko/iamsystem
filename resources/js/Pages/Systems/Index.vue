@@ -140,6 +140,7 @@ const form = useForm({
     role_pivot_table: '',
     role_pivot_user_column: 'user_id',
     role_pivot_role_column: 'role_id',
+    hidden_roles_text: '',
 
     active_type: '',
     active_column: '',
@@ -195,6 +196,7 @@ function openEdit(system) {
     form.role_pivot_table = system.role_pivot_table ?? '';
     form.role_pivot_user_column = system.role_pivot_user_column ?? 'user_id';
     form.role_pivot_role_column = system.role_pivot_role_column ?? 'role_id';
+    form.hidden_roles_text = system.hidden_roles_text ?? '';
 
     form.active_type = system.active_type ?? '';
     form.active_column = system.active_column ?? '';
@@ -619,6 +621,14 @@ async function testConnection() {
                                 <InputLabel value="Model type (pivote polimórfico)" />
                                 <TextInput v-model="form.model_type" type="text" class="mt-1 block w-full" />
                             </div>
+                        </div>
+
+                        <div v-if="form.role_mechanism === 'column' || form.role_mechanism === 'pivot'">
+                            <InputLabel value="Roles ocultos en el IAM (separados por coma)" />
+                            <TextInput v-model="form.hidden_roles_text" type="text" class="mt-1 block w-full" placeholder="empresa" />
+                            <p class="mt-1 text-xs text-slate-400">
+                                Las cuentas con alguno de estos roles no aparecen en ningún listado, conteo ni búsqueda del IAM.
+                            </p>
                         </div>
                     </section>
 

@@ -93,9 +93,10 @@ class DashboardController extends Controller
                 try {
                     $table = DB::connection($system->remoteConnectionName())
                         ->table($system->users_table ?: 'users');
+                    $system->excludeHiddenRoles($table);
 
                     $count = $table->count();
-                    [$active, $inactive] = $this->activeInactiveSplit($system, $count);
+                    [$active, $inactive] = $this->activeInactiveSplit($system, $table, $count);
 
                     $breakdown[] = [
                         'key' => $system->key,
@@ -115,16 +116,16 @@ class DashboardController extends Controller
 
     /**
      * [activas, de_baja] para un sistema, calculado con COUNT en SQL (sin
-     * traer filas). Si el sistema no tiene columna de estado mapeada,
-     * devuelve [0, 0] — no se suma al total de activas/de baja global.
+     * traer filas), sobre el mismo builder ya filtrado por
+     * excludeHiddenRoles() que se usó para el conteo total. Si el sistema no
+     * tiene columna de estado mapeada, devuelve [0, 0] — no se suma al total
+     * de activas/de baja global.
      */
-    private function activeInactiveSplit(SystemEntry $system, int $totalCount): array
+    private function activeInactiveSplit(SystemEntry $system, $table, int $totalCount): array
     {
         if (! $system->active_column || ! $system->active_type) {
             return [0, 0];
         }
-
-        $table = DB::connection($system->remoteConnectionName())->table($system->users_table ?: 'users');
 
         try {
             return match ($system->active_type) {

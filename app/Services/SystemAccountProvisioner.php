@@ -597,11 +597,14 @@ class SystemAccountProvisioner
                     $selectCols .= ", {$system->alias_column} as inline_alias";
                 }
 
-                $rows = DB::connection($connection)
+                $detailBuilder = DB::connection($connection)
                     ->table($usersTable)
                     ->whereRaw("{$matchExpr} = ?", [$normalized])
-                    ->selectRaw($selectCols)
-                    ->get();
+                    ->selectRaw($selectCols);
+
+                $system->excludeHiddenRoles($detailBuilder);
+
+                $rows = $detailBuilder->get();
 
                 foreach ($rows as $row) {
                     $roles = match (true) {
@@ -740,6 +743,8 @@ class SystemAccountProvisioner
                 $builder = DB::connection($system->remoteConnectionName())
                     ->table($system->users_table ?: 'users')
                     ->selectRaw($selectCols);
+
+                $system->excludeHiddenRoles($builder);
 
                 if ($query) {
                     $builder->where(function ($q) use ($system, $query) {

@@ -17,7 +17,7 @@ class SystemEntry extends Model
         'role_pivot_table', 'role_pivot_user_column', 'role_pivot_role_column',
         'role_column', 'role_json_column',
         'active_column', 'active_type', 'active_values',
-        'alias_column', 'alias_required',
+        'alias_column', 'alias_required', 'hidden_roles',
         'db_driver', 'db_host', 'db_port', 'db_database', 'db_username', 'db_password',
         'extra_fields', 'visible_in_public_form', 'public_form_restrictions',
     ];
@@ -26,6 +26,7 @@ class SystemEntry extends Model
         'db_password' => 'encrypted',
         'extra_fields' => 'array',
         'public_form_restrictions' => 'array',
+        'hidden_roles' => 'array',
     ];
 
     public function accounts(): HasMany
@@ -92,5 +93,39 @@ class SystemEntry extends Model
         }
 
         return $name;
+    }
+
+    /**
+     * Excluye del builder las cuentas cuyo rol esté en hidden_roles (para
+     * cuentas "no persona" como accesos de empresa/cliente que no se quieren
+     * ver en el IAM). Solo soporta los mecanismos "pivot" y "column"; con
+     * "json" no se aplica ningún filtro porque el rol está embebido en una
+     * columna JSON del sistema remoto y no hay forma genérica de filtrarlo
+     * en SQL sin conocer su estructura.
+     */
+    public function excludeHiddenRoles($builder)
+    {
+        if (empty($this->hidden_roles)) {
+            return $builder;
+        }
+
+        if ($this->role_column) {
+            return $builder->whereNotIn($this->role_column, $this->hidden_roles);
+        }
+
+        if ($this->role_pivot_table && $this->roles_table) {
+            return $builder->whereNotIn('id', function ($q) {
+                $q->select($this->role_pivot_user_column)
+                    ->from($this->role_pivot_table)
+                    ->join($this->roles_table, "{$this->roles_table}.id", '=', "{$this->role_pivot_table}.{$this->role_pivot_role_column}")
+                    ->whereIn("{$this->roles_table}.name", $this->hidden_roles);
+
+                if ($this->role_pivot_user_column === 'model_id') {
+                    $q->where("{$this->role_pivot_table}.model_type", $this->model_type);
+                }
+            });
+        }
+
+        return $builder;
     }
 }
