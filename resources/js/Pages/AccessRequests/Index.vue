@@ -4,11 +4,16 @@ import { Head, router, usePage } from '@inertiajs/vue3';
 import { ref } from 'vue';
 
 defineProps({
-    requests: Array,
+    people: Array,
 });
 
 const page = usePage();
 const processingId = ref(null);
+const expanded = ref({});
+
+function toggleExpanded(email) {
+    expanded.value[email] = !expanded.value[email];
+}
 
 function statusLabel(status) {
     return { pending: 'Pendiente', approved: 'Aprobado', rejected: 'Rechazado' }[status] ?? status;
@@ -67,8 +72,8 @@ function extraFieldEntries(item) {
         <div class="py-8">
             <div class="mx-auto max-w-5xl space-y-4 sm:px-6 lg:px-8">
                 <p class="text-sm text-slate-500 dark:text-slate-400">
-                    Personas que pidieron acceso desde el formulario público. Aprueba o rechaza sistema por sistema —
-                    la cuenta recién se crea en el sistema real al aprobar.
+                    Agrupado por persona: si alguien pidió acceso más de una vez, todo aparece en una sola tarjeta.
+                    Aprueba o rechaza sistema por sistema — la cuenta recién se crea en el sistema real al aprobar.
                 </p>
 
                 <div
@@ -84,25 +89,44 @@ function extraFieldEntries(item) {
                     {{ page.props.flash.error }}
                 </div>
 
-                <div v-if="!requests.length" class="rounded-xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-400 dark:border-slate-800 dark:bg-slate-900">
+                <div v-if="!people.length" class="rounded-xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-400 dark:border-slate-800 dark:bg-slate-900">
                     No hay solicitudes de acceso todavía.
                 </div>
 
                 <div
-                    v-for="req in requests"
-                    :key="req.id"
+                    v-for="person in people"
+                    :key="person.email"
                     class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900"
                 >
-                    <div class="flex items-center justify-between border-b border-slate-100 px-4 py-3 dark:border-slate-800">
-                        <div>
-                            <p class="text-sm font-medium text-slate-800 dark:text-slate-100">{{ req.name }}</p>
-                            <p class="text-xs text-slate-400">{{ req.email }}</p>
+                    <button
+                        type="button"
+                        @click="toggleExpanded(person.email)"
+                        class="flex w-full items-center justify-between border-b border-slate-100 px-4 py-3 text-left hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/60"
+                    >
+                        <div class="flex items-center gap-2">
+                            <svg
+                                class="h-4 w-4 shrink-0 text-slate-400 transition-transform"
+                                :class="{ 'rotate-90': expanded[person.email] }"
+                                viewBox="0 0 20 20"
+                                fill="currentColor"
+                            >
+                                <path fill-rule="evenodd" d="M7.3 4.3a1 1 0 011.4 0l5 5a1 1 0 010 1.4l-5 5a1 1 0 01-1.4-1.4L11.6 10 7.3 5.7a1 1 0 010-1.4z" clip-rule="evenodd" />
+                            </svg>
+                            <div>
+                                <p class="text-sm font-medium text-slate-800 dark:text-slate-100">{{ person.name }}</p>
+                                <p class="text-xs text-slate-400">{{ person.email }}</p>
+                            </div>
                         </div>
-                        <span class="text-xs text-slate-400">Solicitado: {{ formatDate(req.created_at) }}</span>
-                    </div>
+                        <span
+                            v-if="person.pending_count"
+                            class="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-800 dark:bg-amber-900 dark:text-amber-200"
+                        >
+                            {{ person.pending_count }} pendiente{{ person.pending_count === 1 ? '' : 's' }}
+                        </span>
+                    </button>
 
-                    <div class="divide-y divide-slate-100 dark:divide-slate-800">
-                        <div v-for="item in req.items" :key="item.id" class="p-4">
+                    <div v-if="expanded[person.email]" class="divide-y divide-slate-100 dark:divide-slate-800">
+                        <div v-for="item in person.items" :key="item.id" class="p-4">
                             <div class="flex flex-wrap items-center justify-between gap-2">
                                 <div class="flex items-center gap-2">
                                     <span class="text-sm font-medium text-slate-700 dark:text-slate-200">{{ item.system_name }}</span>
@@ -117,7 +141,8 @@ function extraFieldEntries(item) {
                                     </span>
                                 </div>
 
-                                <div v-if="item.status === 'pending'" class="flex gap-2">
+                                <div v-if="item.status === 'pending'" class="flex items-center gap-2">
+                                    <span class="text-xs text-slate-400">{{ formatDate(item.requested_at) }}</span>
                                     <button
                                         @click="approve(item)"
                                         :disabled="processingId === item.id"

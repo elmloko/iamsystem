@@ -14,16 +14,27 @@ class AccessRequestController extends Controller
 {
     public function index(): Response
     {
-        $requests = AccessRequest::with(['items.system', 'items.decidedBy'])
-            ->orderByDesc('created_at')
+        // Se agrupa por persona (correo), no por cada envío del formulario:
+        // si alguien pidió acceso más de una vez, todo aparece en una sola
+        // tarjeta en vez de repetirse.
+        $items = AccessRequestItem::with(['accessRequest', 'system', 'decidedBy'])
             ->get()
-            ->map(function (AccessRequest $accessRequest) {
+            ->sortByDesc(fn (AccessRequestItem $item) => $item->created_at);
+
+        $people = $items
+            ->groupBy(fn (AccessRequestItem $item) => mb_strtolower(trim($item->accessRequest->email)))
+            ->map(function ($items) {
+                $latest = $items->sortByDesc(fn ($item) => $item->accessRequest->created_at)->first();
+                $sortedItems = $items->sortBy(fn ($item) => [
+                    $item->status === 'pending' ? 0 : 1,
+                    -$item->created_at->timestamp,
+                ])->values();
+
                 return [
-                    'id' => $accessRequest->id,
-                    'name' => $accessRequest->name,
-                    'email' => $accessRequest->email,
-                    'created_at' => $accessRequest->created_at,
-                    'items' => $accessRequest->items->map(fn (AccessRequestItem $item) => [
+                    'name' => $latest->accessRequest->name,
+                    'email' => $latest->accessRequest->email,
+                    'pending_count' => $items->where('status', 'pending')->count(),
+                    'items' => $sortedItems->map(fn (AccessRequestItem $item) => [
                         'id' => $item->id,
                         'system_id' => $item->system_id,
                         'system_name' => $item->system?->name ?? '(sistema eliminado)',
@@ -35,11 +46,14 @@ class AccessRequestController extends Controller
                         'outcome_message' => $item->outcome_message,
                         'decided_by_name' => $item->decidedBy?->name,
                         'decided_at' => $item->decided_at,
+                        'requested_at' => $item->created_at,
                     ]),
                 ];
-            });
+            })
+            ->sortBy(fn ($group) => [-$group['pending_count'], -$group['items']->first()['requested_at']->timestamp])
+            ->values();
 
-        return Inertia::render('AccessRequests/Index', ['requests' => $requests]);
+        return Inertia::render('AccessRequests/Index', ['people' => $people]);
     }
 
     public function approve(AccessRequestItem $item, SystemAccountProvisioner $provisioner): RedirectResponse
