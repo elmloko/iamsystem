@@ -33,7 +33,7 @@ class UserManagementController extends Controller
 
         return Inertia::render('Users/Index', [
             'people' => $people,
-            'systems' => SystemEntry::orderBy('name')->get(['id', 'key', 'name', 'status', 'alias_column']),
+            'systems' => SystemEntry::orderBy('name')->get(['id', 'key', 'name', 'status', 'alias_column', 'alias_required']),
             'filters' => $request->only(['q', 'system', 'status']),
         ]);
     }
@@ -44,7 +44,7 @@ class UserManagementController extends Controller
             'systems' => SystemEntry::where('status', 'active')
                 ->connectable()
                 ->orderBy('name')
-                ->get(['id', 'key', 'name', 'alias_column']),
+                ->get(['id', 'key', 'name', 'alias_column', 'alias_required']),
         ]);
     }
 
@@ -93,6 +93,12 @@ class UserManagementController extends Controller
         // que los obligatorios se validan aparte en vez de con reglas fijas.
         foreach ($data['systems'] as $entry) {
             $system = SystemEntry::find($entry['system_id']);
+
+            if ($system?->alias_required && blank($entry['alias'] ?? null)) {
+                throw ValidationException::withMessages([
+                    'systems' => "El alias de acceso es obligatorio para {$system->name}.",
+                ]);
+            }
 
             foreach ($system?->extra_fields ?? [] as $field) {
                 if (! ($field['required'] ?? false)) {

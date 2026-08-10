@@ -20,7 +20,7 @@ class PublicAccessRequestController extends Controller
                 ->where('visible_in_public_form', true)
                 ->connectable()
                 ->orderBy('name')
-                ->get(['id', 'key', 'name', 'alias_column']),
+                ->get(['id', 'key', 'name', 'alias_column', 'alias_required']),
         ]);
     }
 
@@ -64,6 +64,12 @@ class PublicAccessRequestController extends Controller
             if (! $system || ! $system->visible_in_public_form) {
                 throw ValidationException::withMessages([
                     'systems' => 'Uno de los sistemas seleccionados ya no está disponible para solicitar acceso.',
+                ]);
+            }
+
+            if ($system->alias_required && blank($entry['alias'] ?? null)) {
+                throw ValidationException::withMessages([
+                    'systems' => "El alias de acceso es obligatorio para {$system->name}.",
                 ]);
             }
 

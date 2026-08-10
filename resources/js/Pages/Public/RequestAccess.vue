@@ -200,11 +200,15 @@ function submit() {
                             </div>
 
                             <div v-if="isChecked(system.id) && system.alias_column" class="sm:max-w-xs">
+                                <label class="text-xs text-slate-500 dark:text-slate-400">
+                                    Alias de acceso<span v-if="system.alias_required" class="text-red-500">*</span>
+                                </label>
                                 <input
                                     v-model="entryFor(system.id).alias"
                                     type="text"
-                                    placeholder="Alias de acceso (opcional)"
-                                    class="w-full rounded-md border-slate-300 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
+                                    :required="system.alias_required"
+                                    :placeholder="system.alias_required ? '' : 'Opcional'"
+                                    class="mt-1 w-full rounded-md border-slate-300 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
                                 />
                             </div>
 
@@ -216,6 +220,7 @@ function submit() {
                                     <label class="text-xs text-slate-500 dark:text-slate-400">
                                         {{ field.label }}<span v-if="field.required" class="text-red-500">*</span>
                                     </label>
+                                    <p v-if="field.help" class="mb-1 text-xs italic text-slate-400">{{ field.help }}</p>
 
                                     <select
                                         v-if="field.type === 'select'"

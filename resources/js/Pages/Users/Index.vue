@@ -934,11 +934,15 @@ function formatDate(value) {
                                 </div>
 
                                 <div v-if="isAddChecked(system.id) && system.alias_column" class="sm:max-w-xs">
+                                    <label class="text-xs text-gray-500 dark:text-gray-400">
+                                        Alias<span v-if="system.alias_required" class="text-red-500">*</span>
+                                    </label>
                                     <input
                                         v-model="addEntryFor(system.id).alias"
                                         type="text"
-                                        placeholder="Alias (opcional)"
-                                        class="w-full rounded-md border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200"
+                                        :required="system.alias_required"
+                                        :placeholder="system.alias_required ? '' : 'Opcional'"
+                                        class="mt-1 w-full rounded-md border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200"
                                     />
                                 </div>
 
@@ -950,6 +954,7 @@ function formatDate(value) {
                                         <label class="text-xs text-gray-500 dark:text-gray-400">
                                             {{ field.label }}<span v-if="field.required" class="text-red-500">*</span>
                                         </label>
+                                        <p v-if="field.help" class="mb-1 text-xs italic text-gray-400">{{ field.help }}</p>
 
                                         <select
                                             v-if="field.type === 'select'"
