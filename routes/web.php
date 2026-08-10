@@ -33,6 +33,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/solicitudes', [AccessRequestController::class, 'index'])->name('access-requests.index');
     Route::post('/solicitudes/items/{item}/aprobar', [AccessRequestController::class, 'approve'])->name('access-requests.approve');
     Route::post('/solicitudes/items/{item}/rechazar', [AccessRequestController::class, 'reject'])->name('access-requests.reject');
+    Route::delete('/solicitudes/persona', [AccessRequestController::class, 'destroyForPerson'])->name('access-requests.destroy-person');
 
     Route::get('/sistemas', [SystemController::class, 'index'])->name('systems.index');
     Route::post('/sistemas', [SystemController::class, 'store'])->name('systems.store');

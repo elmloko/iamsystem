@@ -1,6 +1,9 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
-import { Head, router, usePage } from '@inertiajs/vue3';
+import Modal from '@/Components/Modal.vue';
+import SecondaryButton from '@/Components/SecondaryButton.vue';
+import DangerButton from '@/Components/DangerButton.vue';
+import { Head, router, useForm, usePage } from '@inertiajs/vue3';
 import { ref } from 'vue';
 
 defineProps({
@@ -13,6 +16,29 @@ const expanded = ref({});
 
 function toggleExpanded(email) {
     expanded.value[email] = !expanded.value[email];
+}
+
+const showDelete = ref(false);
+const deletingPerson = ref(null);
+const deleteForm = useForm({});
+
+function confirmDelete(person) {
+    deletingPerson.value = person;
+    showDelete.value = true;
+}
+
+function closeDelete() {
+    showDelete.value = false;
+    deletingPerson.value = null;
+}
+
+function destroyPerson() {
+    deleteForm.transform(() => ({
+        access_request_ids: deletingPerson.value.access_request_ids,
+    })).delete(route('access-requests.destroy-person'), {
+        preserveScroll: true,
+        onSuccess: () => closeDelete(),
+    });
 }
 
 function statusLabel(status) {
@@ -98,12 +124,12 @@ function extraFieldEntries(item) {
                     :key="person.email"
                     class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900"
                 >
-                    <button
-                        type="button"
-                        @click="toggleExpanded(person.email)"
-                        class="flex w-full items-center justify-between border-b border-slate-100 px-4 py-3 text-left hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/60"
-                    >
-                        <div class="flex items-center gap-2">
+                    <div class="flex w-full items-center justify-between border-b border-slate-100 px-4 py-3 dark:border-slate-800">
+                        <button
+                            type="button"
+                            @click="toggleExpanded(person.email)"
+                            class="flex flex-1 items-center gap-2 text-left"
+                        >
                             <svg
                                 class="h-4 w-4 shrink-0 text-slate-400 transition-transform"
                                 :class="{ 'rotate-90': expanded[person.email] }"
@@ -116,14 +142,27 @@ function extraFieldEntries(item) {
                                 <p class="text-sm font-medium text-slate-800 dark:text-slate-100">{{ person.name }}</p>
                                 <p class="text-xs text-slate-400">{{ person.email }}</p>
                             </div>
+                        </button>
+
+                        <div class="flex items-center gap-2">
+                            <span
+                                v-if="person.pending_count"
+                                class="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-800 dark:bg-amber-900 dark:text-amber-200"
+                            >
+                                {{ person.pending_count }} pendiente{{ person.pending_count === 1 ? '' : 's' }}
+                            </span>
+                            <button
+                                type="button"
+                                @click="confirmDelete(person)"
+                                title="Eliminar solicitud"
+                                class="rounded-md p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950 dark:hover:text-red-400"
+                            >
+                                <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fill-rule="evenodd" d="M8.5 2a1.5 1.5 0 00-1.5 1.5V4H4a1 1 0 000 2h.1l.8 10.4A2 2 0 006.9 18h6.2a2 2 0 002-1.6L15.9 6h.1a1 1 0 100-2h-3V3.5A1.5 1.5 0 0011.5 2h-3zM10 8a1 1 0 011 1v6a1 1 0 11-2 0V9a1 1 0 011-1zm-3 1a1 1 0 012 0v6a1 1 0 11-2 0V9zm7-1a1 1 0 00-1 1v6a1 1 0 102 0V9a1 1 0 00-1-1z" clip-rule="evenodd" />
+                                </svg>
+                            </button>
                         </div>
-                        <span
-                            v-if="person.pending_count"
-                            class="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-800 dark:bg-amber-900 dark:text-amber-200"
-                        >
-                            {{ person.pending_count }} pendiente{{ person.pending_count === 1 ? '' : 's' }}
-                        </span>
-                    </button>
+                    </div>
 
                     <div v-if="expanded[person.email]" class="divide-y divide-slate-100 dark:divide-slate-800">
                         <div v-for="item in person.items" :key="item.id" class="p-4">
@@ -180,5 +219,25 @@ function extraFieldEntries(item) {
                 </div>
             </div>
         </div>
+
+        <Modal :show="showDelete" @close="closeDelete" max-width="sm">
+            <div class="p-6">
+                <h3 class="text-lg font-medium text-slate-900 dark:text-slate-100">
+                    ¿Eliminar la solicitud de {{ deletingPerson?.name }}?
+                </h3>
+                <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">
+                    Se borra por completo el registro de la solicitud (todos los sistemas que aparecen en esta
+                    tarjeta), incluidos los ya aprobados o rechazados. Esto no elimina ninguna cuenta ya creada en
+                    los sistemas remotos, solo el historial de la solicitud en el IAM. No se puede deshacer.
+                </p>
+
+                <div class="mt-6 flex justify-end gap-3">
+                    <SecondaryButton @click="closeDelete">Cancelar</SecondaryButton>
+                    <DangerButton :class="{ 'opacity-25': deleteForm.processing }" :disabled="deleteForm.processing" @click="destroyPerson">
+                        Eliminar
+                    </DangerButton>
+                </div>
+            </div>
+        </Modal>
     </AuthenticatedLayout>
 </template>

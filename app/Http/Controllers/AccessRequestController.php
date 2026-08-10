@@ -7,6 +7,7 @@ use App\Models\AccessRequestItem;
 use App\Models\Person;
 use App\Services\SystemAccountProvisioner;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -34,6 +35,7 @@ class AccessRequestController extends Controller
                     'name' => $latest->accessRequest->name,
                     'email' => $latest->accessRequest->email,
                     'pending_count' => $items->where('status', 'pending')->count(),
+                    'access_request_ids' => $items->pluck('access_request_id')->unique()->values(),
                     'items' => $sortedItems->map(fn (AccessRequestItem $item) => [
                         'id' => $item->id,
                         'system_id' => $item->system_id,
@@ -115,5 +117,23 @@ class AccessRequestController extends Controller
         ]);
 
         return back()->with('success', "Acceso a \"{$item->system->name}\" rechazado.");
+    }
+
+    /**
+     * Borra por completo el registro de la(s) solicitud(es) de una persona
+     * (todas las que aparecen agrupadas en su tarjeta). No toca las cuentas
+     * ya creadas en los sistemas remotos si algún ítem ya fue aprobado —
+     * solo elimina el historial de la solicitud en el IAM.
+     */
+    public function destroyForPerson(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'access_request_ids' => ['required', 'array', 'min:1'],
+            'access_request_ids.*' => ['integer', 'exists:access_requests,id'],
+        ]);
+
+        AccessRequest::whereIn('id', $data['access_request_ids'])->delete();
+
+        return back()->with('success', 'Solicitud eliminada.');
     }
 }
