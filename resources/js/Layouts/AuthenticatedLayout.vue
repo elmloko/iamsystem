@@ -67,16 +67,16 @@ const showingNavigationDropdown = ref(false);
                                     Usuarios internos
                                 </NavLink>
                                 <NavLink
-                                    :href="route('audit.index')"
-                                    :active="route().current('audit.*')"
-                                >
-                                    Auditoría
-                                </NavLink>
-                                <NavLink
                                     :href="route('access-requests.create')"
                                     :active="route().current('access-requests.create')"
                                 >
                                     Solicitar
+                                </NavLink>
+                                <NavLink
+                                    :href="route('audit.index')"
+                                    :active="route().current('audit.*')"
+                                >
+                                    Auditoría
                                 </NavLink>
                             </div>
                         </div>
@@ -210,16 +210,16 @@ const showingNavigationDropdown = ref(false);
                             Usuarios internos
                         </ResponsiveNavLink>
                         <ResponsiveNavLink
-                            :href="route('audit.index')"
-                            :active="route().current('audit.*')"
-                        >
-                            Auditoría
-                        </ResponsiveNavLink>
-                        <ResponsiveNavLink
                             :href="route('access-requests.create')"
                             :active="route().current('access-requests.create')"
                         >
                             Solicitar
+                        </ResponsiveNavLink>
+                        <ResponsiveNavLink
+                            :href="route('audit.index')"
+                            :active="route().current('audit.*')"
+                        >
+                            Auditoría
                         </ResponsiveNavLink>
                     </div>
 

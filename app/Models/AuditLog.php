@@ -5,6 +5,11 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+/**
+ * Auditoría del propio IAM (no de los sistemas externos, eso lo cubre
+ * SystemAuditService). Se escribe con App\Support\Audit::log()/logAs(),
+ * incluida la visita de página vía App\Http\Middleware\LogPageVisits.
+ */
 class AuditLog extends Model
 {
     const UPDATED_AT = null;

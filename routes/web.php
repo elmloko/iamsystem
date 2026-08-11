@@ -65,6 +65,7 @@ Route::middleware(['auth', LogPageVisits::class])->group(function () {
     Route::delete('/usuarios/cuentas/{system}/roles', [UserManagementController::class, 'removeAccountRole'])->name('users.accounts.roles.destroy');
 
     Route::get('/auditoria', [AuditLogController::class, 'index'])->name('audit.index');
+    Route::get('/auditoria/usuarios', [AuditLogController::class, 'actors'])->name('audit.actors');
 });
 
 require __DIR__.'/auth.php';
