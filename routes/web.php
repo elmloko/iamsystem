@@ -40,6 +40,7 @@ Route::middleware('auth')->group(function () {
     Route::put('/sistemas/{system}', [SystemController::class, 'update'])->name('systems.update');
     Route::post('/sistemas/probar-conexion', [SystemController::class, 'testConnection'])->name('systems.test-connection');
     Route::post('/sistemas/probar-url', [SystemController::class, 'testUrl'])->name('systems.test-url');
+    Route::post('/sistemas/verificar-todo', [SystemController::class, 'verifyAll'])->name('systems.verify-all');
     Route::patch('/sistemas/{system}/visibilidad', [SystemController::class, 'toggleVisibility'])->name('systems.toggle-visibility');
     Route::delete('/sistemas/{system}', [SystemController::class, 'destroy'])->name('systems.destroy');
 

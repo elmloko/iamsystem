@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\SystemEntry;
+use Illuminate\Http\Client\Pool;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Config;
@@ -11,6 +12,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
+use PDO;
 use Throwable;
 
 class SystemController extends Controller
@@ -230,5 +232,79 @@ class SystemController extends Controller
         } catch (Throwable $e) {
             return response()->json(['status' => 'error', 'message' => 'Sin respuesta: '.$e->getMessage()]);
         }
+    }
+
+    /**
+     * Revisa la conexión a BD y las URLs de todos los sistemas en una sola
+     * petición. El servidor de desarrollo (php artisan serve) en Windows es
+     * de un solo hilo, así que disparar decenas de peticiones sueltas desde
+     * el frontend las serializa; acá las URLs se resuelven con un pool HTTP
+     * concurrente y las conexiones a BD usan un timeout corto para no
+     * colgarse con hosts caídos.
+     */
+    public function verifyAll(): \Illuminate\Http\JsonResponse
+    {
+        $systems = SystemEntry::all();
+
+        $urlTargets = [];
+        foreach ($systems as $system) {
+            foreach (['url_internal', 'url_external'] as $field) {
+                if (filled($system->{$field})) {
+                    $urlTargets["{$system->id}_{$field}"] = $system->{$field};
+                }
+            }
+        }
+
+        $urlResults = [];
+        if ($urlTargets) {
+            $responses = Http::pool(fn (Pool $pool) => collect($urlTargets)
+                ->map(fn (string $url, string $key) => $pool->as($key)->timeout(5)->withoutVerifying()->get($url))
+                ->all());
+
+            foreach ($urlTargets as $key => $url) {
+                $response = $responses[$key] ?? null;
+
+                $urlResults[$key] = $response instanceof \Illuminate\Http\Client\Response
+                    ? ['status' => 'ok', 'message' => "Responde con HTTP {$response->status()}."]
+                    : ['status' => 'error', 'message' => 'Sin respuesta: '.($response?->getMessage() ?? 'error desconocido')];
+            }
+        }
+
+        $connectionResults = [];
+        foreach ($systems as $system) {
+            if (! $system->hasOwnConnectionData()) {
+                $connectionResults[$system->id] = ['status' => 'unavailable'];
+
+                continue;
+            }
+
+            $tempName = "sysverify_{$system->id}";
+            $driver = $system->db_driver ?: 'pgsql';
+
+            Config::set("database.connections.{$tempName}", [
+                'driver' => $driver,
+                'host' => $system->db_host,
+                'port' => $system->db_port ?: ($driver === 'mysql' ? 3306 : 5432),
+                'database' => $system->db_database,
+                'username' => $system->db_username,
+                'password' => $system->db_password,
+                'charset' => $driver === 'mysql' ? 'utf8mb4' : 'utf8',
+                'prefix' => '',
+                'search_path' => 'public',
+                'sslmode' => 'prefer',
+                'options' => [PDO::ATTR_TIMEOUT => 3],
+            ]);
+
+            try {
+                DB::connection($tempName)->getPdo();
+                $connectionResults[$system->id] = ['status' => 'ok', 'message' => 'Conexión exitosa.'];
+            } catch (Throwable $e) {
+                $connectionResults[$system->id] = ['status' => 'error', 'message' => 'No se pudo conectar: '.$e->getMessage()];
+            } finally {
+                DB::purge($tempName);
+            }
+        }
+
+        return response()->json(['connections' => $connectionResults, 'urls' => $urlResults]);
     }
 }

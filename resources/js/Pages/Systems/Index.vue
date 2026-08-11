@@ -341,12 +341,52 @@ async function checkLiveUrl(system, field) {
     }
 }
 
-function checkAllLiveConnections() {
+// Verifica todo (BD + URLs de todos los sistemas) en una sola petición al
+// backend, en vez de disparar decenas de peticiones sueltas: el servidor de
+// desarrollo en Windows es de un solo hilo y las serializa, haciéndolo lento.
+const verifyingAll = ref(false);
+
+async function checkAllLiveConnections() {
+    verifyingAll.value = true;
+
+    const checkingConnection = {};
+    const checkingUrl = {};
     props.systems.forEach((system) => {
-        checkLiveConnection(system);
-        checkLiveUrl(system, 'url_internal');
-        checkLiveUrl(system, 'url_external');
+        checkingConnection[system.id] = { checking: true };
+        if (system.url_internal) checkingUrl[urlStatusKey(system, 'url_internal')] = { checking: true };
+        if (system.url_external) checkingUrl[urlStatusKey(system, 'url_external')] = { checking: true };
     });
+    liveConnection.value = checkingConnection;
+    liveUrl.value = checkingUrl;
+
+    try {
+        const res = await fetch(route('systems.verify-all', undefined, false), {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-XSRF-TOKEN': xsrfHeader(),
+                Accept: 'application/json',
+            },
+        });
+        const data = await res.json();
+
+        const connections = {};
+        Object.entries(data.connections ?? {}).forEach(([id, result]) => {
+            connections[id] = { checking: false, ...result };
+        });
+        liveConnection.value = connections;
+
+        const urls = {};
+        Object.entries(data.urls ?? {}).forEach(([key, result]) => {
+            urls[key] = { checking: false, ...result };
+        });
+        liveUrl.value = urls;
+    } catch (e) {
+        liveConnection.value = {};
+        liveUrl.value = {};
+    } finally {
+        verifyingAll.value = false;
+    }
 }
 
 onMounted(() => {
@@ -411,9 +451,10 @@ onMounted(() => {
                     <button
                         type="button"
                         @click="checkAllLiveConnections"
-                        class="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                        :disabled="verifyingAll"
+                        class="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
                     >
-                        ⟳ Verificar conexiones y URLs
+                        {{ verifyingAll ? 'Verificando...' : '⟳ Verificar conexiones y URLs' }}
                     </button>
                     <span class="text-xs text-slate-400 sm:ml-auto">{{ filteredSystems.length }} de {{ systems.length }}</span>
                 </div>
