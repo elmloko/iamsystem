@@ -52,6 +52,8 @@ Route::middleware(['auth', LogPageVisits::class])->group(function () {
     Route::delete('/administradores/{admin}', [AdminUserController::class, 'destroy'])->name('admins.destroy');
 
     Route::get('/usuarios', [UserManagementController::class, 'index'])->name('users.index');
+    Route::get('/usuarios/exportar/pdf', [UserManagementController::class, 'exportPdf'])->name('users.export.pdf');
+    Route::get('/usuarios/exportar/excel', [UserManagementController::class, 'exportExcel'])->name('users.export.excel');
     Route::get('/usuarios/nuevo', [UserManagementController::class, 'create'])->name('users.create');
     Route::get('/usuarios/detalle', [UserManagementController::class, 'detail'])->name('users.detail');
     Route::post('/usuarios', [UserManagementController::class, 'store'])->name('users.store');

@@ -2,15 +2,18 @@
 
 namespace App\Http\Controllers;
 
+use App\Exports\UsersExport;
 use App\Models\Person;
 use App\Models\SystemEntry;
 use App\Services\SystemAccountProvisioner;
 use App\Support\Audit;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
+use Maatwebsite\Excel\Facades\Excel;
 
 class UserManagementController extends Controller
 {
@@ -37,6 +40,37 @@ class UserManagementController extends Controller
             'systems' => SystemEntry::orderBy('name')->get(['id', 'key', 'name', 'status', 'alias_column', 'alias_required']),
             'filters' => $request->only(['q', 'system', 'status']),
         ]);
+    }
+
+    public function exportPdf(Request $request, SystemAccountProvisioner $provisioner)
+    {
+        $search = $request->string('q')->trim()->value() ?: null;
+        $systemKey = $request->string('system')->trim()->value() ?: null;
+        $status = $request->string('status')->trim()->value() ?: null;
+
+        $accounts = $provisioner->listDetailedForExport($search, $systemKey, $status);
+        $systemName = $systemKey ? SystemEntry::where('key', $systemKey)->value('name') : null;
+
+        $pdf = Pdf::loadView('exports.users-pdf', [
+            'accounts' => $accounts,
+            'search' => $search,
+            'systemName' => $systemName,
+            'status' => $status,
+            'generatedAt' => now(),
+        ])->setPaper('a4', 'landscape');
+
+        return $pdf->download('usuarios-'.now()->format('Y-m-d_His').'.pdf');
+    }
+
+    public function exportExcel(Request $request, SystemAccountProvisioner $provisioner)
+    {
+        $search = $request->string('q')->trim()->value() ?: null;
+        $systemKey = $request->string('system')->trim()->value() ?: null;
+        $status = $request->string('status')->trim()->value() ?: null;
+
+        $accounts = $provisioner->listDetailedForExport($search, $systemKey, $status);
+
+        return Excel::download(new UsersExport($accounts), 'usuarios-'.now()->format('Y-m-d_His').'.xlsx');
     }
 
     public function create(): Response

@@ -795,4 +795,121 @@ class SystemAccountProvisioner
             ->sortBy(fn ($group) => mb_strtolower($group['name']))
             ->values();
     }
+
+    /**
+     * Igual que listGroupedByName pero sin paginar y con todos los campos
+     * disponibles por cuenta (alias, roles, fecha de alta), pensado para
+     * exportar el listado filtrado a PDF/Excel. Trae roles en bloque por
+     * sistema (no por persona) para no disparar N+1 contra las BDs remotas.
+     */
+    public function listDetailedForExport(?string $query = null, ?string $systemKey = null, ?string $status = null, int $perSystemCap = 5000): Collection
+    {
+        $systems = SystemEntry::where('status', 'active')
+            ->connectable()
+            ->when($systemKey, fn ($q) => $q->where('key', $systemKey))
+            ->get();
+
+        $rows = collect();
+
+        foreach ($systems as $system) {
+            try {
+                $connection = $system->remoteConnectionName();
+                $usersTable = $system->users_table ?: 'users';
+                $hasCreatedAt = Schema::connection($connection)->hasColumn($usersTable, 'created_at');
+
+                $nameExpr = $system->last_name_column
+                    ? "concat({$system->name_column}, ' ', {$system->last_name_column})"
+                    : $system->name_column;
+
+                $selectCols = "id, {$nameExpr} as name, {$system->email_column} as email";
+                if ($hasCreatedAt) {
+                    $selectCols .= ", created_at";
+                }
+                if ($system->active_column) {
+                    $selectCols .= ", {$system->active_column} as inline_active";
+                }
+                if ($system->alias_column) {
+                    $selectCols .= ", {$system->alias_column} as inline_alias";
+                }
+                if ($system->role_column) {
+                    $selectCols .= ", {$system->role_column} as inline_role";
+                }
+                if ($system->role_json_column) {
+                    $selectCols .= ", {$system->role_json_column} as inline_roles_json";
+                }
+
+                $builder = DB::connection($connection)
+                    ->table($usersTable)
+                    ->selectRaw($selectCols);
+
+                $system->excludeHiddenRoles($builder);
+
+                if ($query) {
+                    $builder->where(function ($q) use ($system, $query) {
+                        $q->where($system->name_column, 'like', "%{$query}%")
+                            ->when($system->last_name_column, fn ($qq) => $qq->orWhere($system->last_name_column, 'like', "%{$query}%"))
+                            ->orWhere($system->email_column, 'like', "%{$query}%");
+                    });
+                }
+
+                $results = $builder->orderBy($system->name_column)->limit($perSystemCap)->get();
+
+                $pivotRoles = [];
+                if ($system->role_pivot_table && $system->roles_table) {
+                    try {
+                        $pivotBuilder = DB::connection($connection)
+                            ->table($system->role_pivot_table)
+                            ->join($system->roles_table, "{$system->role_pivot_table}.{$system->role_pivot_role_column}", '=', "{$system->roles_table}.id")
+                            ->select(
+                                "{$system->role_pivot_table}.{$system->role_pivot_user_column} as user_id",
+                                "{$system->roles_table}.name as role_name"
+                            );
+
+                        if ($system->role_pivot_user_column === 'model_id') {
+                            $pivotBuilder->where("{$system->role_pivot_table}.model_type", $system->model_type);
+                        }
+
+                        foreach ($pivotBuilder->get() as $r) {
+                            $pivotRoles[$r->user_id][] = $r->role_name;
+                        }
+                    } catch (Throwable $e) {
+                        Log::warning("Fallo trayendo roles en bloque en [{$system->key}]: {$e->getMessage()}");
+                    }
+                }
+
+                foreach ($results as $row) {
+                    $active = $this->resolveActiveStatus($system, $row->inline_active ?? null);
+
+                    if ($status === 'active' && $active !== true) {
+                        continue;
+                    }
+                    if ($status === 'inactive' && $active !== false) {
+                        continue;
+                    }
+
+                    $roles = match (true) {
+                        (bool) $system->role_column => array_values(array_filter([$row->inline_role ?? null])),
+                        (bool) $system->role_json_column => $this->decodeRoleArray($row->inline_roles_json ?? null)->values()->all(),
+                        default => $pivotRoles[$row->id] ?? [],
+                    };
+
+                    $rows->push([
+                        'name' => trim((string) $row->name) ?: '(sin nombre)',
+                        'email' => $row->email,
+                        'system_name' => $system->name,
+                        'alias' => $row->inline_alias ?? null,
+                        'roles' => implode(', ', $roles),
+                        'active' => $active,
+                        'created_at' => $row->created_at ?? null,
+                    ]);
+                }
+            } catch (Throwable $e) {
+                Log::warning("Fallo exportando usuarios de [{$system->key}]: {$e->getMessage()}");
+            }
+        }
+
+        return $rows
+            ->sortBy(fn ($row) => mb_strtolower($row['name']).'|'.mb_strtolower($row['system_name']))
+            ->values();
+    }
 }
