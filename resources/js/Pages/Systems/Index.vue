@@ -8,7 +8,7 @@ import PrimaryButton from '@/Components/PrimaryButton.vue';
 import SecondaryButton from '@/Components/SecondaryButton.vue';
 import DangerButton from '@/Components/DangerButton.vue';
 import { Head, router, useForm, usePage } from '@inertiajs/vue3';
-import { computed, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 
 const props = defineProps({
     systems: Array,
@@ -254,6 +254,56 @@ async function testConnection() {
         testing.value = false;
     }
 }
+
+// Estado de conexión en vivo (columna "Conexión" en el listado)
+const liveConnection = ref({});
+
+async function checkLiveConnection(system) {
+    if (!system.db_host || !system.db_database) {
+        liveConnection.value = {
+            ...liveConnection.value,
+            [system.id]: { checking: false, status: 'unavailable' },
+        };
+        return;
+    }
+
+    liveConnection.value = { ...liveConnection.value, [system.id]: { checking: true } };
+
+    try {
+        const res = await fetch(route('systems.test-connection', undefined, false), {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-XSRF-TOKEN': xsrfHeader(),
+                Accept: 'application/json',
+            },
+            body: JSON.stringify({
+                system_id: system.id,
+                db_driver: system.db_driver,
+                db_host: system.db_host,
+                db_port: system.db_port || null,
+                db_database: system.db_database,
+                db_username: system.db_username,
+                db_password: null,
+            }),
+        });
+        const data = await res.json();
+        liveConnection.value = { ...liveConnection.value, [system.id]: { checking: false, ...data } };
+    } catch (e) {
+        liveConnection.value = {
+            ...liveConnection.value,
+            [system.id]: { checking: false, status: 'error', message: 'Error de conexión al probar.' },
+        };
+    }
+}
+
+function checkAllLiveConnections() {
+    props.systems.forEach((system) => checkLiveConnection(system));
+}
+
+onMounted(() => {
+    checkAllLiveConnections();
+});
 </script>
 
 <template>
@@ -310,6 +360,13 @@ async function testConnection() {
                         <option value="visible">Solo visibles</option>
                         <option value="oculto">Solo ocultos</option>
                     </select>
+                    <button
+                        type="button"
+                        @click="checkAllLiveConnections"
+                        class="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                    >
+                        ⟳ Verificar conexiones
+                    </button>
                     <span class="text-xs text-slate-400 sm:ml-auto">{{ filteredSystems.length }} de {{ systems.length }}</span>
                 </div>
 
@@ -343,7 +400,46 @@ async function testConnection() {
                                     </span>
                                 </td>
                                 <td class="px-4 py-3 align-top text-sm text-slate-500 dark:text-slate-400">
-                                    {{ system.db_host ? `${system.db_host} / ${system.db_database}` : (system.connection ?? '—') }}
+                                    <div>{{ system.db_host ? `${system.db_host} / ${system.db_database}` : (system.connection ?? '—') }}</div>
+                                    <div class="mt-1 flex items-center gap-1.5">
+                                        <span
+                                            v-if="liveConnection[system.id]?.checking"
+                                            class="inline-flex items-center gap-1 text-xs text-slate-400"
+                                        >
+                                            <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-slate-400"></span>
+                                            Verificando...
+                                        </span>
+                                        <span
+                                            v-else-if="liveConnection[system.id]?.status === 'ok'"
+                                            class="inline-flex items-center gap-1 text-xs font-medium text-emerald-600 dark:text-emerald-400"
+                                        >
+                                            <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+                                            Conectado
+                                        </span>
+                                        <span
+                                            v-else-if="liveConnection[system.id]?.status === 'error'"
+                                            class="inline-flex items-center gap-1 text-xs font-medium text-red-500"
+                                            :title="liveConnection[system.id]?.message"
+                                        >
+                                            <span class="h-1.5 w-1.5 rounded-full bg-red-500"></span>
+                                            Sin conexión
+                                        </span>
+                                        <span
+                                            v-else-if="liveConnection[system.id]?.status === 'unavailable'"
+                                            class="text-xs text-slate-400"
+                                            title="Este sistema usa una conexión fija (legado), no verificable desde aquí."
+                                        >
+                                            No verificable
+                                        </span>
+                                        <button
+                                            type="button"
+                                            @click="checkLiveConnection(system)"
+                                            class="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                                            title="Volver a verificar"
+                                        >
+                                            ⟳
+                                        </button>
+                                    </div>
                                 </td>
                                 <td class="px-4 py-3 align-top">
                                     <span
