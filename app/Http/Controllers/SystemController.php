@@ -27,6 +27,7 @@ class SystemController extends Controller
             'role_pivot_table', 'role_pivot_user_column', 'role_pivot_role_column',
             'active_column', 'active_type', 'active_values',
             'alias_column', 'hidden_roles',
+            'created_at_column', 'created_at_format',
             'db_driver', 'db_host', 'db_port', 'db_database', 'db_username', 'db_password',
         ])->map(function (SystemEntry $system) {
             $data = $system->toArray();
@@ -151,6 +152,9 @@ class SystemController extends Controller
             'active_values_text' => ['nullable', 'string'],
 
             'alias_column' => ['nullable', 'string', 'max:255'],
+
+            'created_at_column' => ['nullable', 'string', 'max:255'],
+            'created_at_format' => ['nullable', Rule::in(['datetime', 'unix'])],
 
             'hidden_roles_text' => ['nullable', 'string'],
         ];

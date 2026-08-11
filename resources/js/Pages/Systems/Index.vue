@@ -150,6 +150,9 @@ const form = useForm({
     active_values_text: '',
 
     alias_column: '',
+
+    created_at_column: '',
+    created_at_format: '',
 });
 
 function openCreate() {
@@ -209,6 +212,9 @@ function openEdit(system) {
     form.active_values_text = system.active_values_text ?? '';
 
     form.alias_column = system.alias_column ?? '';
+
+    form.created_at_column = system.created_at_column ?? '';
+    form.created_at_format = system.created_at_format ?? '';
 
     showEdit.value = true;
 }
@@ -857,6 +863,21 @@ onMounted(() => {
                             <div>
                                 <InputLabel value="Columna alias (opcional)" />
                                 <TextInput v-model="form.alias_column" type="text" class="mt-1 block w-full" />
+                            </div>
+                            <div>
+                                <InputLabel value="Columna fecha de alta (opcional)" />
+                                <TextInput v-model="form.created_at_column" type="text" class="mt-1 block w-full" placeholder="ej. created_at, fecha_creacion" />
+                            </div>
+                            <div>
+                                <InputLabel value="Formato de fecha de alta" />
+                                <select v-model="form.created_at_format" class="mt-1 block w-full rounded-md border-slate-300 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200">
+                                    <option value="">Sin especificar (usa created_at/updated_at si existen)</option>
+                                    <option value="datetime">Fecha/hora normal</option>
+                                    <option value="unix">Timestamp Unix (entero)</option>
+                                </select>
+                                <p class="mt-1 text-xs text-slate-400">
+                                    Si el sistema no usa created_at/updated_at estándar de Laravel, mapea aquí su columna real (ej. SIGEC usa fecha_creacion como timestamp Unix). Sin esto, esa columna queda vacía al crear la cuenta.
+                                </p>
                             </div>
                         </div>
                     </section>

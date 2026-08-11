@@ -210,11 +210,17 @@ class SystemAccountProvisioner
 
             // No todos los sistemas siguen la convención created_at/updated_at
             // de Laravel (ej. SIGEC usa fecha_creacion como timestamp Unix).
-            if (Schema::connection($connection)->hasColumn($usersTable, 'created_at')) {
-                $row['created_at'] = now();
-            }
-            if (Schema::connection($connection)->hasColumn($usersTable, 'updated_at')) {
-                $row['updated_at'] = now();
+            // Si el sistema tiene su propia columna mapeada, se usa esa; si no,
+            // se cae al comportamiento legado de detectar created_at/updated_at.
+            if ($system->created_at_column) {
+                $row[$system->created_at_column] = $system->created_at_format === 'unix' ? now()->timestamp : now();
+            } else {
+                if (Schema::connection($connection)->hasColumn($usersTable, 'created_at')) {
+                    $row['created_at'] = now();
+                }
+                if (Schema::connection($connection)->hasColumn($usersTable, 'updated_at')) {
+                    $row['updated_at'] = now();
+                }
             }
 
             if ($system->last_name_column) {

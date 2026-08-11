@@ -19,6 +19,7 @@ class SystemEntry extends Model
         'role_column', 'role_json_column',
         'active_column', 'active_type', 'active_values',
         'alias_column', 'alias_required', 'hidden_roles',
+        'created_at_column', 'created_at_format',
         'db_driver', 'db_host', 'db_port', 'db_database', 'db_username', 'db_password',
         'extra_fields', 'visible_in_public_form', 'public_form_restrictions',
     ];
