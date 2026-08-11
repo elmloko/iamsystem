@@ -500,21 +500,13 @@ onMounted(() => {
                                             class="text-indigo-600 hover:underline dark:text-indigo-400"
                                         >Repo</a>
 
-                                        <div v-if="system.url_internal" class="flex flex-col gap-0.5">
-                                            <div class="flex items-center gap-1.5">
-                                                <a
-                                                    :href="system.url_internal"
-                                                    target="_blank"
-                                                    rel="noopener"
-                                                    class="text-indigo-600 hover:underline dark:text-indigo-400"
-                                                >URL interna</a>
-                                                <button
-                                                    type="button"
-                                                    @click="checkLiveUrl(system, 'url_internal')"
-                                                    class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-                                                    title="Volver a verificar"
-                                                >⟳</button>
-                                            </div>
+                                        <div v-if="system.url_internal" class="flex flex-wrap items-center gap-1.5">
+                                            <a
+                                                :href="system.url_internal"
+                                                target="_blank"
+                                                rel="noopener"
+                                                class="text-indigo-600 hover:underline dark:text-indigo-400"
+                                            >URL interna</a>
                                             <span
                                                 v-if="liveUrl[urlStatusKey(system, 'url_internal')]?.checking"
                                                 class="inline-flex items-center gap-1 text-slate-400"
@@ -537,23 +529,21 @@ onMounted(() => {
                                                 <span class="h-1.5 w-1.5 rounded-full bg-red-500"></span>
                                                 Sin respuesta
                                             </span>
+                                            <button
+                                                type="button"
+                                                @click="checkLiveUrl(system, 'url_internal')"
+                                                class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                                                title="Volver a verificar"
+                                            >⟳</button>
                                         </div>
 
-                                        <div v-if="system.url_external" class="flex flex-col gap-0.5">
-                                            <div class="flex items-center gap-1.5">
-                                                <a
-                                                    :href="system.url_external"
-                                                    target="_blank"
-                                                    rel="noopener"
-                                                    class="text-indigo-600 hover:underline dark:text-indigo-400"
-                                                >URL externa</a>
-                                                <button
-                                                    type="button"
-                                                    @click="checkLiveUrl(system, 'url_external')"
-                                                    class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-                                                    title="Volver a verificar"
-                                                >⟳</button>
-                                            </div>
+                                        <div v-if="system.url_external" class="flex flex-wrap items-center gap-1.5">
+                                            <a
+                                                :href="system.url_external"
+                                                target="_blank"
+                                                rel="noopener"
+                                                class="text-indigo-600 hover:underline dark:text-indigo-400"
+                                            >URL externa</a>
                                             <span
                                                 v-if="liveUrl[urlStatusKey(system, 'url_external')]?.checking"
                                                 class="inline-flex items-center gap-1 text-slate-400"
@@ -576,6 +566,12 @@ onMounted(() => {
                                                 <span class="h-1.5 w-1.5 rounded-full bg-red-500"></span>
                                                 Sin respuesta
                                             </span>
+                                            <button
+                                                type="button"
+                                                @click="checkLiveUrl(system, 'url_external')"
+                                                class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                                                title="Volver a verificar"
+                                            >⟳</button>
                                         </div>
 
                                         <span v-if="!system.repo_url && !system.url_internal && !system.url_external" class="text-slate-400">—</span>
