@@ -96,7 +96,7 @@ function extraFieldEntries(item) {
         </template>
 
         <div class="py-8">
-            <div class="mx-auto max-w-5xl space-y-4 sm:px-6 lg:px-8">
+            <div class="mx-auto max-w-7xl space-y-4 sm:px-6 lg:px-8">
                 <p class="text-sm text-slate-500 dark:text-slate-400">
                     Agrupado por persona: si alguien pidió acceso más de una vez, todo aparece en una sola tarjeta.
                     Aprueba o rechaza sistema por sistema — la cuenta recién se crea en el sistema real al aprobar.

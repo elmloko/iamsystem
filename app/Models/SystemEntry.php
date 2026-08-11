@@ -13,6 +13,7 @@ class SystemEntry extends Model
     protected $fillable = [
         'key', 'name', 'connection', 'users_table',
         'roles_table', 'model_type', 'status', 'notes',
+        'repo_url', 'url_internal', 'url_external',
         'name_column', 'last_name_column', 'email_column', 'password_column', 'password_hash_algo',
         'role_pivot_table', 'role_pivot_user_column', 'role_pivot_role_column',
         'role_column', 'role_json_column',

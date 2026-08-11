@@ -107,7 +107,7 @@ function formatDate(value) {
         </template>
 
         <div class="py-8">
-            <div class="mx-auto max-w-5xl space-y-4 sm:px-6 lg:px-8">
+            <div class="mx-auto max-w-7xl space-y-4 sm:px-6 lg:px-8">
                 <p class="text-sm text-slate-500 dark:text-slate-400">
                     Cuentas que pueden iniciar sesión en este panel IAM (no son cuentas de los sistemas remotos).
                 </p>
@@ -125,7 +125,7 @@ function formatDate(value) {
                     {{ page.props.flash.error }}
                 </div>
 
-                <div class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                <div class="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
                     <table class="min-w-full divide-y divide-slate-200 dark:divide-slate-800">
                         <thead class="bg-slate-50 dark:bg-slate-900/60">
                             <tr>

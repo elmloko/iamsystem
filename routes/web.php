@@ -39,6 +39,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/sistemas', [SystemController::class, 'store'])->name('systems.store');
     Route::put('/sistemas/{system}', [SystemController::class, 'update'])->name('systems.update');
     Route::post('/sistemas/probar-conexion', [SystemController::class, 'testConnection'])->name('systems.test-connection');
+    Route::post('/sistemas/probar-url', [SystemController::class, 'testUrl'])->name('systems.test-url');
     Route::patch('/sistemas/{system}/visibilidad', [SystemController::class, 'toggleVisibility'])->name('systems.toggle-visibility');
     Route::delete('/sistemas/{system}', [SystemController::class, 'destroy'])->name('systems.destroy');
 

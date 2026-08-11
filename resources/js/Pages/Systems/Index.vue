@@ -116,6 +116,9 @@ const form = useForm({
     name: '',
     status: 'pending',
     notes: '',
+    repo_url: '',
+    url_internal: '',
+    url_external: '',
 
     db_driver: 'pgsql',
     db_host: '',
@@ -172,6 +175,9 @@ function openEdit(system) {
     form.name = system.name ?? '';
     form.status = system.status ?? 'active';
     form.notes = system.notes ?? '';
+    form.repo_url = system.repo_url ?? '';
+    form.url_internal = system.url_internal ?? '';
+    form.url_external = system.url_external ?? '';
 
     form.db_driver = system.db_driver ?? 'pgsql';
     form.db_host = system.db_host ?? '';
@@ -297,8 +303,50 @@ async function checkLiveConnection(system) {
     }
 }
 
+// Estado de URL en vivo (interna/externa, dentro de la columna "Enlaces")
+const liveUrl = ref({});
+
+function urlStatusKey(system, field) {
+    return `${system.id}_${field}`;
+}
+
+async function checkLiveUrl(system, field) {
+    const url = system[field];
+    const statusKey = urlStatusKey(system, field);
+
+    if (!url) {
+        liveUrl.value = { ...liveUrl.value, [statusKey]: null };
+        return;
+    }
+
+    liveUrl.value = { ...liveUrl.value, [statusKey]: { checking: true } };
+
+    try {
+        const res = await fetch(route('systems.test-url', undefined, false), {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-XSRF-TOKEN': xsrfHeader(),
+                Accept: 'application/json',
+            },
+            body: JSON.stringify({ url }),
+        });
+        const data = await res.json();
+        liveUrl.value = { ...liveUrl.value, [statusKey]: { checking: false, ...data } };
+    } catch (e) {
+        liveUrl.value = {
+            ...liveUrl.value,
+            [statusKey]: { checking: false, status: 'error', message: 'Sin respuesta.' },
+        };
+    }
+}
+
 function checkAllLiveConnections() {
-    props.systems.forEach((system) => checkLiveConnection(system));
+    props.systems.forEach((system) => {
+        checkLiveConnection(system);
+        checkLiveUrl(system, 'url_internal');
+        checkLiveUrl(system, 'url_external');
+    });
 }
 
 onMounted(() => {
@@ -322,7 +370,7 @@ onMounted(() => {
         </template>
 
         <div class="py-8">
-            <div class="mx-auto max-w-5xl space-y-4 sm:px-6 lg:px-8">
+            <div class="mx-auto max-w-7xl space-y-4 sm:px-6 lg:px-8">
                 <p class="text-sm text-slate-500 dark:text-slate-400">
                     {{ systems.length }} sistema(s) registrados en el IAM. Usa "Ver roles" para consultar los roles
                     disponibles directamente en cada base de datos, o "Editar" para ajustar cómo se conecta el IAM a
@@ -365,18 +413,19 @@ onMounted(() => {
                         @click="checkAllLiveConnections"
                         class="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
                     >
-                        ⟳ Verificar conexiones
+                        ⟳ Verificar conexiones y URLs
                     </button>
                     <span class="text-xs text-slate-400 sm:ml-auto">{{ filteredSystems.length }} de {{ systems.length }}</span>
                 </div>
 
-                <div class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-                    <table class="min-w-full divide-y divide-slate-200 dark:divide-slate-800">
+                <div class="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                    <table class="w-full min-w-[72rem] divide-y divide-slate-200 dark:divide-slate-800">
                         <thead class="bg-slate-50 dark:bg-slate-900/60">
                             <tr>
                                 <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Sistema</th>
                                 <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Estado</th>
                                 <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Conexión</th>
+                                <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Enlaces</th>
                                 <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Solicitud pública</th>
                                 <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400"></th>
                             </tr>
@@ -441,6 +490,97 @@ onMounted(() => {
                                         </button>
                                     </div>
                                 </td>
+                                <td class="px-4 py-3 align-top text-xs">
+                                    <div class="flex flex-col gap-1.5">
+                                        <a
+                                            v-if="system.repo_url"
+                                            :href="system.repo_url"
+                                            target="_blank"
+                                            rel="noopener"
+                                            class="text-indigo-600 hover:underline dark:text-indigo-400"
+                                        >Repo</a>
+
+                                        <div v-if="system.url_internal" class="flex flex-col gap-0.5">
+                                            <div class="flex items-center gap-1.5">
+                                                <a
+                                                    :href="system.url_internal"
+                                                    target="_blank"
+                                                    rel="noopener"
+                                                    class="text-indigo-600 hover:underline dark:text-indigo-400"
+                                                >URL interna</a>
+                                                <button
+                                                    type="button"
+                                                    @click="checkLiveUrl(system, 'url_internal')"
+                                                    class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                                                    title="Volver a verificar"
+                                                >⟳</button>
+                                            </div>
+                                            <span
+                                                v-if="liveUrl[urlStatusKey(system, 'url_internal')]?.checking"
+                                                class="inline-flex items-center gap-1 text-slate-400"
+                                            >
+                                                <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-slate-400"></span>
+                                                Verificando...
+                                            </span>
+                                            <span
+                                                v-else-if="liveUrl[urlStatusKey(system, 'url_internal')]?.status === 'ok'"
+                                                class="inline-flex items-center gap-1 font-medium text-emerald-600 dark:text-emerald-400"
+                                            >
+                                                <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+                                                En línea
+                                            </span>
+                                            <span
+                                                v-else-if="liveUrl[urlStatusKey(system, 'url_internal')]?.status === 'error'"
+                                                class="inline-flex items-center gap-1 font-medium text-red-500"
+                                                :title="liveUrl[urlStatusKey(system, 'url_internal')]?.message"
+                                            >
+                                                <span class="h-1.5 w-1.5 rounded-full bg-red-500"></span>
+                                                Sin respuesta
+                                            </span>
+                                        </div>
+
+                                        <div v-if="system.url_external" class="flex flex-col gap-0.5">
+                                            <div class="flex items-center gap-1.5">
+                                                <a
+                                                    :href="system.url_external"
+                                                    target="_blank"
+                                                    rel="noopener"
+                                                    class="text-indigo-600 hover:underline dark:text-indigo-400"
+                                                >URL externa</a>
+                                                <button
+                                                    type="button"
+                                                    @click="checkLiveUrl(system, 'url_external')"
+                                                    class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                                                    title="Volver a verificar"
+                                                >⟳</button>
+                                            </div>
+                                            <span
+                                                v-if="liveUrl[urlStatusKey(system, 'url_external')]?.checking"
+                                                class="inline-flex items-center gap-1 text-slate-400"
+                                            >
+                                                <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-slate-400"></span>
+                                                Verificando...
+                                            </span>
+                                            <span
+                                                v-else-if="liveUrl[urlStatusKey(system, 'url_external')]?.status === 'ok'"
+                                                class="inline-flex items-center gap-1 font-medium text-emerald-600 dark:text-emerald-400"
+                                            >
+                                                <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+                                                En línea
+                                            </span>
+                                            <span
+                                                v-else-if="liveUrl[urlStatusKey(system, 'url_external')]?.status === 'error'"
+                                                class="inline-flex items-center gap-1 font-medium text-red-500"
+                                                :title="liveUrl[urlStatusKey(system, 'url_external')]?.message"
+                                            >
+                                                <span class="h-1.5 w-1.5 rounded-full bg-red-500"></span>
+                                                Sin respuesta
+                                            </span>
+                                        </div>
+
+                                        <span v-if="!system.repo_url && !system.url_internal && !system.url_external" class="text-slate-400">—</span>
+                                    </div>
+                                </td>
                                 <td class="px-4 py-3 align-top">
                                     <span
                                         :class="[
@@ -485,7 +625,7 @@ onMounted(() => {
                                 </td>
                             </tr>
                             <tr v-if="!filteredSystems.length">
-                                <td colspan="5" class="px-4 py-10 text-center text-sm text-slate-400">
+                                <td colspan="6" class="px-4 py-10 text-center text-sm text-slate-400">
                                     {{ systems.length ? 'Ningún sistema coincide con el filtro.' : 'No hay sistemas registrados.' }}
                                 </td>
                             </tr>
@@ -562,6 +702,20 @@ onMounted(() => {
                                 <p v-if="!editingSystem" class="mt-1 text-xs text-slate-400">
                                     Déjalo en "Pendiente" hasta confirmar la conexión con "Probar conexión".
                                 </p>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                            <div>
+                                <InputLabel value="Repo Git" />
+                                <TextInput v-model="form.repo_url" type="text" class="mt-1 block w-full" placeholder="https://github.com/org/repo.git" />
+                            </div>
+                            <div>
+                                <InputLabel value="URL interna" />
+                                <TextInput v-model="form.url_internal" type="text" class="mt-1 block w-full" placeholder="http://172.65.10.55:8000" />
+                            </div>
+                            <div>
+                                <InputLabel value="URL externa" />
+                                <TextInput v-model="form.url_external" type="text" class="mt-1 block w-full" placeholder="https://sistema.correos.gob.bo" />
                             </div>
                         </div>
                         <div>

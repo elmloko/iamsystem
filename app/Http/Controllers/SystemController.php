@@ -7,6 +7,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -17,7 +18,7 @@ class SystemController extends Controller
     public function index(): Response
     {
         $systems = SystemEntry::orderBy('name')->get([
-            'id', 'key', 'name', 'status', 'connection', 'notes', 'visible_in_public_form',
+            'id', 'key', 'name', 'status', 'connection', 'notes', 'repo_url', 'url_internal', 'url_external', 'visible_in_public_form',
             'users_table', 'name_column', 'last_name_column', 'email_column', 'password_column', 'password_hash_algo', 'model_type',
             'roles_table', 'role_column', 'role_json_column',
             'role_pivot_table', 'role_pivot_user_column', 'role_pivot_role_column',
@@ -101,6 +102,9 @@ class SystemController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'status' => ['required', Rule::in(['active', 'pending'])],
             'notes' => ['nullable', 'string'],
+            'repo_url' => ['nullable', 'string', 'max:255'],
+            'url_internal' => ['nullable', 'string', 'max:255'],
+            'url_external' => ['nullable', 'string', 'max:255'],
 
             'db_driver' => ['required', Rule::in(['pgsql', 'mysql', 'sqlsrv'])],
             'db_host' => ['required', 'string', 'max:255'],
@@ -207,6 +211,24 @@ class SystemController extends Controller
             return response()->json(['status' => 'error', 'message' => 'No se pudo conectar: '.$e->getMessage()]);
         } finally {
             DB::purge($tempName);
+        }
+    }
+
+    public function testUrl(Request $request)
+    {
+        $data = $request->validate([
+            'url' => ['required', 'string', 'max:255'],
+        ]);
+
+        try {
+            $response = Http::timeout(6)->withoutVerifying()->get($data['url']);
+
+            return response()->json([
+                'status' => 'ok',
+                'message' => "Responde con HTTP {$response->status()}.",
+            ]);
+        } catch (Throwable $e) {
+            return response()->json(['status' => 'error', 'message' => 'Sin respuesta: '.$e->getMessage()]);
         }
     }
 }
