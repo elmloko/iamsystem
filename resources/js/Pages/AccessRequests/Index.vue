@@ -1,13 +1,18 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import Modal from '@/Components/Modal.vue';
+import InputLabel from '@/Components/InputLabel.vue';
+import TextInput from '@/Components/TextInput.vue';
+import InputError from '@/Components/InputError.vue';
 import SecondaryButton from '@/Components/SecondaryButton.vue';
+import PrimaryButton from '@/Components/PrimaryButton.vue';
 import DangerButton from '@/Components/DangerButton.vue';
 import { Head, router, useForm, usePage } from '@inertiajs/vue3';
-import { ref } from 'vue';
+import { reactive, ref } from 'vue';
 
-defineProps({
+const props = defineProps({
     people: Array,
+    systems: Array,
 });
 
 const page = usePage();
@@ -82,6 +87,82 @@ function formatDate(value) {
 
 function extraFieldEntries(item) {
     return Object.entries(item.extra_fields ?? {}).filter(([, v]) => v !== null && v !== '' && (!Array.isArray(v) || v.length));
+}
+
+// --- Editar solicitud (corregir lo que la persona llenó mal antes de aprobar) ---
+const showEdit = ref(false);
+const editingItem = ref(null);
+const rolesState = reactive({ loading: false, roles: [] });
+const extraFieldsState = reactive({ loading: false, fields: [] });
+
+const editForm = useForm({
+    name: '',
+    email: '',
+    role_id: null,
+    role_name: null,
+    alias: '',
+    extra_fields: {},
+});
+
+function systemFor(item) {
+    return item ? props.systems.find((s) => s.id === item.system_id) : null;
+}
+
+async function openEdit(item) {
+    editingItem.value = item;
+    editForm.clearErrors();
+    editForm.name = item.requester_name;
+    editForm.email = item.requester_email;
+    editForm.role_id = item.role_id;
+    editForm.role_name = item.role_name;
+    editForm.alias = item.alias ?? '';
+    editForm.extra_fields = { ...(item.extra_fields ?? {}) };
+    showEdit.value = true;
+
+    rolesState.loading = true;
+    extraFieldsState.loading = true;
+    try {
+        const [rolesRes, fieldsRes] = await Promise.all([
+            fetch(route('users.roles', item.system_id, false)),
+            fetch(route('users.extra-fields', item.system_id, false)),
+        ]);
+        const rolesData = await rolesRes.json();
+        const fieldsData = await fieldsRes.json();
+        rolesState.roles = rolesData.roles ?? [];
+        extraFieldsState.fields = fieldsData.fields ?? [];
+    } catch (e) {
+        rolesState.roles = [];
+        extraFieldsState.fields = [];
+    } finally {
+        rolesState.loading = false;
+        extraFieldsState.loading = false;
+    }
+}
+
+function closeEdit() {
+    showEdit.value = false;
+    editingItem.value = null;
+}
+
+function setRole(role) {
+    editForm.role_id = role ? role.id : null;
+    editForm.role_name = role ? role.name : null;
+}
+
+function setExtraField(column, value) {
+    editForm.extra_fields[column] = value;
+}
+
+function toggleExtraFieldValue(column, value, checked) {
+    const current = Array.isArray(editForm.extra_fields[column]) ? editForm.extra_fields[column] : [];
+    editForm.extra_fields[column] = checked ? [...current, value] : current.filter((v) => v !== value);
+}
+
+function submitEdit() {
+    editForm.put(route('access-requests.items.update', editingItem.value.id), {
+        preserveScroll: true,
+        onSuccess: () => closeEdit(),
+    });
 }
 </script>
 
@@ -183,6 +264,12 @@ function extraFieldEntries(item) {
                                 <div v-if="item.status === 'pending'" class="flex items-center gap-2">
                                     <span class="text-xs text-slate-400">{{ formatDate(item.requested_at) }}</span>
                                     <button
+                                        @click="openEdit(item)"
+                                        class="rounded-md border border-slate-300 px-3 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                                    >
+                                        Editar
+                                    </button>
+                                    <button
                                         @click="approve(item)"
                                         :disabled="processingId === item.id"
                                         class="rounded-md border border-emerald-300 px-3 py-1 text-xs font-medium text-emerald-600 hover:bg-emerald-50 disabled:opacity-40 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950"
@@ -219,6 +306,110 @@ function extraFieldEntries(item) {
                 </div>
             </div>
         </div>
+
+        <Modal :show="showEdit" @close="closeEdit" max-width="lg">
+            <div class="p-6">
+                <h3 class="text-lg font-medium text-slate-900 dark:text-slate-100">
+                    Corregir solicitud — {{ editingItem?.system_name }}
+                </h3>
+                <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                    Arreglá lo que la persona llenó mal antes de aprobar.
+                </p>
+
+                <div class="mt-4 space-y-4">
+                    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <div>
+                            <InputLabel for="edit-name" value="Nombre" />
+                            <TextInput id="edit-name" v-model="editForm.name" type="text" class="mt-1 block w-full" />
+                            <InputError :message="editForm.errors.name" class="mt-1" />
+                        </div>
+                        <div>
+                            <InputLabel for="edit-email" value="Email" />
+                            <TextInput id="edit-email" v-model="editForm.email" type="email" class="mt-1 block w-full" />
+                            <InputError :message="editForm.errors.email" class="mt-1" />
+                        </div>
+                    </div>
+
+                    <div>
+                        <InputLabel value="Rol" />
+                        <select
+                            class="mt-1 w-full rounded-md border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200"
+                            :disabled="rolesState.loading"
+                            :value="editForm.role_id"
+                            @change="setRole(rolesState.roles.find(r => String(r.id) === $event.target.value))"
+                        >
+                            <option value="">{{ rolesState.loading ? 'Cargando roles...' : 'Sin rol' }}</option>
+                            <option v-for="role in rolesState.roles" :key="role.id" :value="role.id">{{ role.name }}</option>
+                        </select>
+                    </div>
+
+                    <div v-if="systemFor(editingItem)?.alias_column">
+                        <InputLabel value="Alias" />
+                        <TextInput
+                            v-model="editForm.alias"
+                            type="text"
+                            :required="systemFor(editingItem)?.alias_required"
+                            class="mt-1 block w-full"
+                        />
+                        <InputError :message="editForm.errors.alias" class="mt-1" />
+                    </div>
+
+                    <div
+                        v-if="extraFieldsState.fields.length"
+                        class="grid grid-cols-1 gap-3 rounded-md bg-gray-50 p-3 dark:bg-gray-900/40 sm:grid-cols-2"
+                    >
+                        <div v-for="field in extraFieldsState.fields" :key="field.column">
+                            <label class="text-xs text-gray-500 dark:text-gray-400">
+                                {{ field.label }}<span v-if="field.required" class="text-red-500">*</span>
+                            </label>
+                            <p v-if="field.help" class="mb-1 text-xs italic text-gray-400">{{ field.help }}</p>
+
+                            <select
+                                v-if="field.type === 'select'"
+                                class="mt-1 w-full rounded-md border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200"
+                                :value="editForm.extra_fields[field.column] ?? ''"
+                                @change="setExtraField(field.column, $event.target.value)"
+                            >
+                                <option value="">Seleccionar...</option>
+                                <option v-for="opt in field.options ?? []" :key="opt.value" :value="opt.value">
+                                    {{ opt.label }}
+                                </option>
+                            </select>
+
+                            <div v-else-if="field.type === 'multiselect'" class="mt-1 flex flex-wrap gap-2">
+                                <label
+                                    v-for="opt in field.options ?? []"
+                                    :key="opt.value"
+                                    class="flex items-center gap-1 rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-600 dark:border-gray-700 dark:text-gray-300"
+                                >
+                                    <input
+                                        type="checkbox"
+                                        class="rounded border-gray-300 text-gray-800 focus:ring-gray-500"
+                                        :checked="(Array.isArray(editForm.extra_fields[field.column]) ? editForm.extra_fields[field.column] : []).includes(opt.value)"
+                                        @change="toggleExtraFieldValue(field.column, opt.value, $event.target.checked)"
+                                    />
+                                    {{ opt.label }}
+                                </label>
+                            </div>
+
+                            <input
+                                v-else
+                                :type="field.type === 'date' ? 'date' : 'text'"
+                                class="mt-1 w-full rounded-md border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200"
+                                :value="editForm.extra_fields[field.column] ?? ''"
+                                @input="setExtraField(field.column, $event.target.value)"
+                            />
+                        </div>
+                    </div>
+                    <InputError :message="editForm.errors.extra_fields" class="mt-1" />
+                </div>
+
+                <div class="mt-6 flex justify-end gap-3">
+                    <SecondaryButton @click="closeEdit">Cancelar</SecondaryButton>
+                    <PrimaryButton :disabled="editForm.processing" @click="submitEdit">Guardar</PrimaryButton>
+                </div>
+            </div>
+        </Modal>
 
         <Modal :show="showDelete" @close="closeDelete" max-width="sm">
             <div class="p-6">

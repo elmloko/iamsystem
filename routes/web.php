@@ -33,6 +33,7 @@ Route::middleware(['auth', LogPageVisits::class])->group(function () {
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 
     Route::get('/solicitudes', [AccessRequestController::class, 'index'])->name('access-requests.index');
+    Route::put('/solicitudes/items/{item}', [AccessRequestController::class, 'updateItem'])->name('access-requests.items.update');
     Route::post('/solicitudes/items/{item}/aprobar', [AccessRequestController::class, 'approve'])->name('access-requests.approve');
     Route::post('/solicitudes/items/{item}/rechazar', [AccessRequestController::class, 'reject'])->name('access-requests.reject');
     Route::delete('/solicitudes/persona', [AccessRequestController::class, 'destroyForPerson'])->name('access-requests.destroy-person');
