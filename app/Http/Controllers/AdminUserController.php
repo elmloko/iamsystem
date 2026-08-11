@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Support\Audit;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -27,12 +28,14 @@ class AdminUserController extends Controller
             'password' => ['required', 'string', 'min:8', 'confirmed'],
         ]);
 
-        User::create([
+        $admin = User::create([
             'name' => $data['name'],
             'email' => $data['email'],
             'password' => Hash::make($data['password']),
             'email_verified_at' => now(),
         ]);
+
+        Audit::log('admins.created', "Creó el usuario interno \"{$admin->name}\" ({$admin->email}).", $admin);
 
         return redirect()->route('admins.index')->with('success', 'Usuario creado correctamente.');
     }
@@ -48,11 +51,19 @@ class AdminUserController extends Controller
         $admin->name = $data['name'];
         $admin->email = $data['email'];
 
-        if (! empty($data['password'])) {
+        $passwordChanged = ! empty($data['password']);
+        if ($passwordChanged) {
             $admin->password = Hash::make($data['password']);
         }
 
         $admin->save();
+
+        Audit::log(
+            'admins.updated',
+            "Editó el usuario interno \"{$admin->name}\" ({$admin->email}).",
+            $admin,
+            ['password_changed' => $passwordChanged]
+        );
 
         return redirect()->route('admins.index')->with('success', 'Usuario actualizado correctamente.');
     }
@@ -67,7 +78,11 @@ class AdminUserController extends Controller
             return back()->with('error', 'Debe quedar al menos un usuario administrador.');
         }
 
+        $name = $admin->name;
+        $email = $admin->email;
         $admin->delete();
+
+        Audit::log('admins.deleted', "Eliminó el usuario interno \"{$name}\" ({$email}).");
 
         return redirect()->route('admins.index')->with('success', 'Usuario eliminado.');
     }

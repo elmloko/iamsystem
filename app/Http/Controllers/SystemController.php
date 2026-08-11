@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\SystemEntry;
+use App\Support\Audit;
 use Illuminate\Http\Client\Pool;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -54,6 +55,8 @@ class SystemController extends Controller
 
         $system = SystemEntry::create($data);
 
+        Audit::log('systems.created', "Creó el sistema \"{$system->name}\".", $system);
+
         return redirect()->route('systems.index')->with('success', "Sistema \"{$system->name}\" creado.");
     }
 
@@ -65,12 +68,20 @@ class SystemController extends Controller
             unset($data['db_password']);
         }
 
+        $changes = collect($data)
+            ->except(['db_password'])
+            ->filter(fn ($value, $key) => $system->{$key} != $value)
+            ->keys()
+            ->all();
+
         $system->update($data);
 
         // Los datos de conexión pudieron cambiar: se descarta la conexión
         // dinámica ya registrada en runtime para que la próxima consulta
         // use los datos nuevos.
         DB::purge("sysentry_{$system->id}");
+
+        Audit::log('systems.updated', "Editó el sistema \"{$system->name}\".", $system, ['campos_cambiados' => $changes]);
 
         return redirect()->route('systems.index')->with('success', "Sistema \"{$system->name}\" actualizado.");
     }
@@ -86,6 +97,8 @@ class SystemController extends Controller
         DB::purge("sysentry_{$system->id}");
         $system->delete();
 
+        Audit::log('systems.deleted', "Eliminó el sistema \"{$name}\" del IAM.");
+
         return redirect()->route('systems.index')->with('success', "Sistema \"{$name}\" eliminado del IAM.");
     }
 
@@ -94,6 +107,8 @@ class SystemController extends Controller
         $system->update(['visible_in_public_form' => ! $system->visible_in_public_form]);
 
         $verb = $system->visible_in_public_form ? 'visible' : 'oculto';
+
+        Audit::log('systems.visibility_toggled', "Puso \"{$system->name}\" como {$verb} en el formulario público de solicitud.", $system);
 
         return back()->with('success', "\"{$system->name}\" ahora está {$verb} en el formulario público de solicitud.");
     }

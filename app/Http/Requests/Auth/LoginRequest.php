@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Auth;
 
+use App\Support\Audit;
 use Illuminate\Auth\Events\Lockout;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
@@ -44,6 +45,8 @@ class LoginRequest extends FormRequest
 
         if (! Auth::attempt($this->only('email', 'password'), $this->boolean('remember'))) {
             RateLimiter::hit($this->throttleKey());
+
+            Audit::logAs(null, $this->string('email')->value(), 'auth.login_failed', "Intento de inicio de sesión fallido ({$this->string('email')->value()}).");
 
             throw ValidationException::withMessages([
                 'email' => trans('auth.failed'),

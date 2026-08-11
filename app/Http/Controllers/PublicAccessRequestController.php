@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\AccessRequest;
 use App\Models\SystemEntry;
 use App\Services\SystemAccountProvisioner;
+use App\Support\Audit;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -130,6 +131,8 @@ class PublicAccessRequestController extends Controller
             'password' => $data['password'],
         ]);
 
+        $systemNames = [];
+
         foreach ($data['systems'] as $entry) {
             $accessRequest->items()->create([
                 'system_id' => $entry['system_id'],
@@ -139,7 +142,18 @@ class PublicAccessRequestController extends Controller
                 'extra_fields' => $entry['extra_fields'] ?? [],
                 'status' => 'pending',
             ]);
+
+            $systemNames[] = SystemEntry::find($entry['system_id'])?->name ?? '(sistema eliminado)';
         }
+
+        Audit::logAs(
+            $data['name'],
+            $data['email'],
+            'access_requests.submitted',
+            "\"{$data['name']}\" ({$data['email']}) pidió acceso a: ".implode(', ', $systemNames).'.',
+            $accessRequest,
+            ['systems' => $systemNames]
+        );
 
         return redirect()->route('access-requests.sent');
     }

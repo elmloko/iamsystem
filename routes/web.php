@@ -2,11 +2,13 @@
 
 use App\Http\Controllers\AccessRequestController;
 use App\Http\Controllers\AdminUserController;
+use App\Http\Controllers\AuditLogController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\PublicAccessRequestController;
 use App\Http\Controllers\SystemController;
 use App\Http\Controllers\UserManagementController;
+use App\Http\Middleware\LogPageVisits;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -22,10 +24,10 @@ Route::get('/solicitar-acceso/sistemas/{system}/roles', [PublicAccessRequestCont
 Route::get('/solicitar-acceso/sistemas/{system}/campos-extra', [PublicAccessRequestController::class, 'extraFieldsFor'])->name('access-requests.extra-fields');
 
 Route::get('/dashboard', [DashboardController::class, 'index'])
-    ->middleware(['auth', 'verified'])
+    ->middleware(['auth', 'verified', LogPageVisits::class])
     ->name('dashboard');
 
-Route::middleware('auth')->group(function () {
+Route::middleware(['auth', LogPageVisits::class])->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
@@ -59,6 +61,8 @@ Route::middleware('auth')->group(function () {
     Route::patch('/usuarios/cuentas/{system}/estado', [UserManagementController::class, 'updateAccountStatus'])->name('users.accounts.status');
     Route::post('/usuarios/cuentas/{system}/roles', [UserManagementController::class, 'addAccountRole'])->name('users.accounts.roles');
     Route::delete('/usuarios/cuentas/{system}/roles', [UserManagementController::class, 'removeAccountRole'])->name('users.accounts.roles.destroy');
+
+    Route::get('/auditoria', [AuditLogController::class, 'index'])->name('audit.index');
 });
 
 require __DIR__.'/auth.php';

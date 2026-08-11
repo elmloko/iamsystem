@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Person;
 use App\Models\SystemEntry;
 use App\Services\SystemAccountProvisioner;
+use App\Support\Audit;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Validation\ValidationException;
@@ -146,6 +147,13 @@ class UserManagementController extends Controller
                 ]
             );
 
+            Audit::log(
+                'accounts.created',
+                "Creó la cuenta de \"{$data['name']}\" ({$data['email']}) en \"{$system->name}\".",
+                $system,
+                ['person_name' => $data['name'], 'person_email' => $data['email'], 'remote_user_id' => $outcome['remote_user_id'] ?? null, 'role_name' => $outcome['role_name'] ?? ($entry['role_name'] ?? null)]
+            );
+
             $results[] = ['system' => $system->name, ...$outcome];
         }
 
@@ -173,6 +181,13 @@ class UserManagementController extends Controller
             $data['password'] ?? null,
         );
 
+        Audit::log(
+            'accounts.updated',
+            "Editó la cuenta (ID remoto {$data['remote_user_id']}) en \"{$system->name}\".",
+            $system,
+            ['remote_user_id' => $data['remote_user_id'], 'email' => $data['email']]
+        );
+
         return response()->json($result);
     }
 
@@ -184,6 +199,14 @@ class UserManagementController extends Controller
         ]);
 
         $result = $provisioner->setAccountActive($system, $data['remote_user_id'], $data['active']);
+
+        $verb = $data['active'] ? 'Activó' : 'Desactivó';
+        Audit::log(
+            'accounts.status_changed',
+            "{$verb} la cuenta (ID remoto {$data['remote_user_id']}) en \"{$system->name}\".",
+            $system,
+            ['remote_user_id' => $data['remote_user_id'], 'active' => $data['active']]
+        );
 
         return response()->json($result);
     }
@@ -198,6 +221,13 @@ class UserManagementController extends Controller
 
         $result = $provisioner->addAccountRole($system, $data['remote_user_id'], $data['role_id'], $data['role_name'] ?? null);
 
+        Audit::log(
+            'accounts.role_added',
+            "Agregó el rol \"{$data['role_name']}\" a la cuenta (ID remoto {$data['remote_user_id']}) en \"{$system->name}\".",
+            $system,
+            ['remote_user_id' => $data['remote_user_id'], 'role_id' => $data['role_id'], 'role_name' => $data['role_name'] ?? null]
+        );
+
         return response()->json($result);
     }
 
@@ -209,6 +239,13 @@ class UserManagementController extends Controller
         ]);
 
         $result = $provisioner->removeAccountRole($system, $data['remote_user_id'], $data['role_id']);
+
+        Audit::log(
+            'accounts.role_removed',
+            "Quitó un rol de la cuenta (ID remoto {$data['remote_user_id']}) en \"{$system->name}\".",
+            $system,
+            ['remote_user_id' => $data['remote_user_id'], 'role_id' => $data['role_id']]
+        );
 
         return response()->json($result);
     }

@@ -6,6 +6,7 @@ use App\Models\AccessRequest;
 use App\Models\AccessRequestItem;
 use App\Models\Person;
 use App\Services\SystemAccountProvisioner;
+use App\Support\Audit;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -101,6 +102,13 @@ class AccessRequestController extends Controller
             'decided_at' => now(),
         ]);
 
+        Audit::log(
+            'access_requests.approved',
+            "Aprobó el acceso de \"{$accessRequest->name}\" ({$accessRequest->email}) a \"{$item->system->name}\".",
+            $item,
+            ['person_email' => $accessRequest->email, 'system' => $item->system->name]
+        );
+
         return back()->with('success', "Acceso a \"{$item->system->name}\" aprobado.");
     }
 
@@ -110,11 +118,20 @@ class AccessRequestController extends Controller
             return back()->with('error', 'Esta solicitud ya fue procesada.');
         }
 
+        $accessRequest = $item->accessRequest;
+
         $item->update([
             'status' => 'rejected',
             'decided_by' => request()->user()->id,
             'decided_at' => now(),
         ]);
+
+        Audit::log(
+            'access_requests.rejected',
+            "Rechazó el acceso de \"{$accessRequest->name}\" ({$accessRequest->email}) a \"{$item->system->name}\".",
+            $item,
+            ['person_email' => $accessRequest->email, 'system' => $item->system->name]
+        );
 
         return back()->with('success', "Acceso a \"{$item->system->name}\" rechazado.");
     }
@@ -132,7 +149,19 @@ class AccessRequestController extends Controller
             'access_request_ids.*' => ['integer', 'exists:access_requests,id'],
         ]);
 
+        $requests = AccessRequest::whereIn('id', $data['access_request_ids'])->get(['id', 'name', 'email']);
+        $person = $requests->first();
+
         AccessRequest::whereIn('id', $data['access_request_ids'])->delete();
+
+        if ($person) {
+            Audit::log(
+                'access_requests.deleted',
+                "Eliminó el historial de solicitudes de \"{$person->name}\" ({$person->email}).",
+                null,
+                ['person_email' => $person->email, 'access_request_ids' => $data['access_request_ids']]
+            );
+        }
 
         return back()->with('success', 'Solicitud eliminada.');
     }
