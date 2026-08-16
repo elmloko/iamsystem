@@ -1,0 +1,25 @@
+services:
+  iamsystem_app:
+    build: .
+    container_name: iamsystem-app
+    restart: unless-stopped
+    ports:
+      - "8128:80"
+    volumes:
+      - .:/var/www/html
+      - iamsystem_vendor:/var/www/html/vendor
+      - iamsystem_node_modules:/var/www/html/node_modules
+    environment:
+      - APP_ENV=local
+      - APP_DEBUG=true
+      - APP_URL=http://localhost:8128
+      - DB_CONNECTION=pgsql
+      - DB_HOST=172.65.10.108
+      - DB_PORT=5432
+      - DB_DATABASE=iamsystem
+      - DB_USERNAME=agbc
+      - DB_PASSWORD=Correos.2026
+
+volumes:
+  iamsystem_vendor:
+  iamsystem_node_modules:
