@@ -190,17 +190,25 @@ class SystemAccountProvisioner
         $connection = $system->remoteConnectionName();
         $usersTable = $system->users_table ?: 'users';
 
+        // Roles que el sistema exige a toda cuenta para que el login
+        // funcione (ver systems.mandatory_roles), aparte del rol funcional
+        // que eligió el admin.
+        $mandatoryRoles = $this->resolveMandatoryRoleValues($system);
+
         try {
             $existing = DB::connection($connection)->table($usersTable)
                 ->where($system->email_column, $person->email)
                 ->first();
 
+            // Si la cuenta ya existe (mismo email), "crear cuenta" no debe
+            // quedarse cruzado de brazos: al menos sincroniza el nombre y
+            // completa los roles que falten (elegido + obligatorios), que es
+            // justamente lo que un admin espera al reenviar el formulario
+            // para corregir un dato. No toca password/alias/extra_fields para
+            // no pisar algo sin que el admin lo pida explícitamente (para eso
+            // está "Editar cuenta").
             if ($existing) {
-                return [
-                    'status' => 'exists',
-                    'remote_user_id' => $existing->id,
-                    'message' => 'Ya existía un usuario con ese email en este sistema.',
-                ];
+                return $this->syncExistingAccount($system, $connection, $usersTable, $existing, $person, $roleId, $roleName, $mandatoryRoles);
             }
 
             $row = [
@@ -235,8 +243,12 @@ class SystemAccountProvisioner
                 $row[$system->role_column] = $roleId;
             }
 
-            if ($system->role_json_column && $roleId) {
-                $row[$system->role_json_column] = json_encode([$roleId]);
+            if ($system->role_json_column) {
+                $jsonRoles = collect([$roleId])->filter()->merge($mandatoryRoles)->unique()->values();
+
+                if ($jsonRoles->isNotEmpty()) {
+                    $row[$system->role_json_column] = json_encode($jsonRoles->all());
+                }
             }
 
             if ($system->alias_column && filled($alias)) {
@@ -264,18 +276,22 @@ class SystemAccountProvisioner
 
             if ($system->role_column || $system->role_json_column) {
                 // el rol ya quedó en la fila insertada, nada más que hacer
-            } elseif ($roleId && $system->role_pivot_table) {
+            } elseif ($system->role_pivot_table && ($pivotRoleIds = collect([$roleId])->filter()->merge($mandatoryRoles)->unique()->values())->isNotEmpty()) {
                 try {
-                    $pivotRow = [
-                        $system->role_pivot_user_column => $remoteId,
-                        $system->role_pivot_role_column => $roleId,
-                    ];
+                    $pivotRows = $pivotRoleIds->map(function ($id) use ($system, $remoteId) {
+                        $pivotRow = [
+                            $system->role_pivot_user_column => $remoteId,
+                            $system->role_pivot_role_column => $id,
+                        ];
 
-                    if ($system->role_pivot_user_column === 'model_id') {
-                        $pivotRow['model_type'] = $system->model_type;
-                    }
+                        if ($system->role_pivot_user_column === 'model_id') {
+                            $pivotRow['model_type'] = $system->model_type;
+                        }
 
-                    DB::connection($connection)->table($system->role_pivot_table)->insert($pivotRow);
+                        return $pivotRow;
+                    })->all();
+
+                    DB::connection($connection)->table($system->role_pivot_table)->insert($pivotRows);
                 } catch (Throwable $e) {
                     $roleMessage = 'Usuario creado, pero no se pudo asignar el rol automáticamente: '.$e->getMessage();
                     Log::warning("Fallo asignando rol en [{$system->key}]: {$e->getMessage()}");
@@ -473,6 +489,12 @@ class SystemAccountProvisioner
         $connection = $system->remoteConnectionName();
         $usersTable = $system->users_table ?: 'users';
 
+        // Quitar un rol obligatorio dejaría la cuenta sin poder entrar al
+        // sistema (es justo el rol que su login exige), así que se rechaza.
+        if ($this->resolveMandatoryRoleValues($system)->contains(fn ($value) => (string) $value === (string) $roleId)) {
+            return ['status' => 'failed', 'message' => 'Ese rol es obligatorio en este sistema: sin él la cuenta no puede iniciar sesión.'];
+        }
+
         try {
             if ($system->role_column) {
                 DB::connection($connection)->table($usersTable)
@@ -518,6 +540,127 @@ class SystemAccountProvisioner
     }
 
     /**
+     * "Crear cuenta" sobre un email que ya tiene cuenta en {$system}: en vez
+     * de no hacer nada (lo que antes dejaba el nombre desactualizado si el
+     * admin reenviaba el formulario para corregirlo), sincroniza el nombre y
+     * completa el rol elegido + los obligatorios si faltan. No toca
+     * password/alias/extra_fields: para eso está "Editar cuenta".
+     */
+    private function syncExistingAccount(SystemEntry $system, string $connection, string $usersTable, object $existing, Person $person, int|string|null $roleId, ?string $roleName, Collection $mandatoryRoles): array
+    {
+        $nameRow = [];
+
+        if ($system->last_name_column) {
+            [$firstName, $lastName] = $this->splitName($person->name);
+            $nameRow[$system->name_column] = $firstName;
+            $nameRow[$system->last_name_column] = $lastName;
+        } else {
+            $nameRow[$system->name_column] = $person->name;
+        }
+
+        DB::connection($connection)->table($usersTable)->where('id', $existing->id)->update($nameRow);
+
+        $wantedRoles = collect([$roleId])->filter()->merge($mandatoryRoles)->unique()->values();
+        $roleMessage = null;
+
+        if ($system->role_column) {
+            if ($roleId) {
+                DB::connection($connection)->table($usersTable)->where('id', $existing->id)->update([$system->role_column => $roleId]);
+            }
+        } elseif ($system->role_json_column) {
+            $current = DB::connection($connection)->table($usersTable)->where('id', $existing->id)->value($system->role_json_column);
+            $roles = $this->decodeRoleArray($current)->merge($wantedRoles)->unique()->values();
+
+            if ($roles->isNotEmpty()) {
+                DB::connection($connection)->table($usersTable)->where('id', $existing->id)->update([$system->role_json_column => json_encode($roles->all())]);
+            }
+        } elseif ($system->role_pivot_table && $wantedRoles->isNotEmpty()) {
+            try {
+                $existingRoleIds = DB::connection($connection)->table($system->role_pivot_table)
+                    ->where($system->role_pivot_user_column, $existing->id)
+                    ->pluck($system->role_pivot_role_column);
+
+                $missingRoles = $wantedRoles->reject(fn ($id) => $existingRoleIds->contains($id));
+
+                $pivotRows = $missingRoles->map(function ($id) use ($system, $existing) {
+                    $pivotRow = [
+                        $system->role_pivot_user_column => $existing->id,
+                        $system->role_pivot_role_column => $id,
+                    ];
+
+                    if ($system->role_pivot_user_column === 'model_id') {
+                        $pivotRow['model_type'] = $system->model_type;
+                    }
+
+                    return $pivotRow;
+                })->all();
+
+                if ($pivotRows) {
+                    DB::connection($connection)->table($system->role_pivot_table)->insert($pivotRows);
+                }
+            } catch (Throwable $e) {
+                $roleMessage = ' No se pudieron completar los roles automáticamente: '.$e->getMessage();
+                Log::warning("Fallo completando roles de cuenta existente en [{$system->key}]: {$e->getMessage()}");
+            }
+        }
+
+        return [
+            'status' => 'exists',
+            'remote_user_id' => $existing->id,
+            'role_name' => $roleName,
+            'message' => 'Ya existía un usuario con ese email en este sistema: se actualizó el nombre y se completaron los roles faltantes.'.$roleMessage,
+        ];
+    }
+
+    /**
+     * Roles que el sistema exige a toda cuenta para que su login funcione
+     * (ver systems.mandatory_roles), listos para guardar: el id numérico en
+     * sistemas con tabla de roles + pivote, y el nombre tal cual en sistemas
+     * que guardan los roles en una columna JSON. Los nombres configurados que
+     * no existen en la tabla de roles remota se descartan (con aviso al log)
+     * para no romper la creación de la cuenta por un typo en la config.
+     * Sistemas con el rol en una columna de texto simple no admiten más de un
+     * rol, así que ahí no aplica.
+     */
+    private function resolveMandatoryRoleValues(SystemEntry $system): Collection
+    {
+        $names = collect($system->mandatory_roles ?? [])
+            ->map(fn ($name) => trim((string) $name))
+            ->filter()
+            ->unique()
+            ->values();
+
+        if ($names->isEmpty() || $system->role_column) {
+            return collect();
+        }
+
+        if ($system->role_json_column) {
+            return $names;
+        }
+
+        if (! $system->roles_table || ! $system->role_pivot_table) {
+            return collect();
+        }
+
+        try {
+            $ids = DB::connection($system->remoteConnectionName())
+                ->table($system->roles_table)
+                ->whereIn('name', $names->all())
+                ->pluck('id');
+
+            if ($ids->count() < $names->count()) {
+                Log::warning("Roles obligatorios inexistentes en [{$system->key}]: configurados [{$names->implode(', ')}], encontrados {$ids->count()}.");
+            }
+
+            return $ids->values();
+        } catch (Throwable $e) {
+            Log::warning("No se pudieron resolver roles obligatorios en [{$system->key}]: {$e->getMessage()}");
+
+            return collect();
+        }
+    }
+
+    /**
      * No todos los sistemas guardan contraseñas con bcrypt (el hash de
      * Laravel): varios sistemas legados usan un algoritmo simple propio.
      * Sin esto, la cuenta se crea pero el login del sistema real nunca
@@ -530,6 +673,10 @@ class SystemAccountProvisioner
             'md5' => md5($password),
             'sha1' => sha1($password),
             'plain' => $password,
+            // ej. SIGEC: framework Kohana con driver Auth ORM, que hashea
+            // hash_hmac('sha256', $password, config('auth.hash_key')) en vez
+            // de un digest simple. La clave va en systems.password_hash_key.
+            'hmac_sha256' => hash_hmac('sha256', $password, (string) $system->password_hash_key),
             default => Hash::make($password),
         };
     }

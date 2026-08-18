@@ -89,6 +89,22 @@ function extraFieldEntries(item) {
     return Object.entries(item.extra_fields ?? {}).filter(([, v]) => v !== null && v !== '' && (!Array.isArray(v) || v.length));
 }
 
+function fieldConfig(item, column) {
+    const system = props.systems.find((s) => s.id === item.system_id);
+    return system?.extra_fields?.find((f) => f.column === column) ?? null;
+}
+
+function fieldLabel(item, column) {
+    return fieldConfig(item, column)?.label ?? column;
+}
+
+function fieldDisplayValue(item, column, value) {
+    const options = fieldConfig(item, column)?.options ?? [];
+    const resolve = (v) => options.find((o) => String(o.value) === String(v))?.label ?? v;
+
+    return Array.isArray(value) ? value.map(resolve).join(', ') : resolve(value);
+}
+
 // --- Editar solicitud (corregir lo que la persona llenó mal antes de aprobar) ---
 const showEdit = ref(false);
 const editingItem = ref(null);
@@ -291,15 +307,15 @@ function submitEdit() {
 
                             <p v-if="item.outcome_message" class="mt-1 text-xs text-amber-600">{{ item.outcome_message }}</p>
 
-                            <dl v-if="extraFieldEntries(item).length || item.alias" class="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-3">
-                                <template v-if="item.alias">
+                            <dl v-if="extraFieldEntries(item).length || item.alias" class="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 text-xs sm:grid-cols-3">
+                                <div v-if="item.alias">
                                     <dt class="text-slate-400">Alias</dt>
                                     <dd class="text-slate-600 dark:text-slate-300">{{ item.alias }}</dd>
-                                </template>
-                                <template v-for="[key, value] in extraFieldEntries(item)" :key="key">
-                                    <dt class="text-slate-400">{{ key }}</dt>
-                                    <dd class="text-slate-600 dark:text-slate-300">{{ Array.isArray(value) ? value.join(', ') : value }}</dd>
-                                </template>
+                                </div>
+                                <div v-for="[key, value] in extraFieldEntries(item)" :key="key">
+                                    <dt class="text-slate-400">{{ fieldLabel(item, key) }}</dt>
+                                    <dd class="text-slate-600 dark:text-slate-300">{{ fieldDisplayValue(item, key, value) }}</dd>
+                                </div>
                             </dl>
                         </div>
                     </div>

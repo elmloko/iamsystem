@@ -16,7 +16,7 @@ use Inertia\Response;
 
 class AccessRequestController extends Controller
 {
-    public function index(): Response
+    public function index(SystemAccountProvisioner $provisioner): Response
     {
         // Se agrupa por persona (correo), no por cada envío del formulario:
         // si alguien pidió acceso más de una vez, todo aparece en una sola
@@ -62,12 +62,25 @@ class AccessRequestController extends Controller
             ->sortBy(fn ($group) => [-$group['pending_count'], -$group['items']->first()['requested_at']->timestamp])
             ->values();
 
+        // Se manda la config de extra_fields (con sus labels y, para
+        // selects, las opciones resueltas) para que el detalle de cada
+        // solicitud muestre etiquetas legibles ("Oficina") en vez del nombre
+        // de columna crudo ("id_oficina"), y el valor humano de los selects
+        // en vez del id guardado.
+        $systems = SystemEntry::where('status', 'active')
+            ->connectable()
+            ->orderBy('name')
+            ->get(['id', 'key', 'name', 'alias_column', 'alias_required'])
+            ->map(function (SystemEntry $system) use ($provisioner) {
+                $data = $system->toArray();
+                $data['extra_fields'] = $provisioner->resolveExtraFields($system);
+
+                return $data;
+            });
+
         return Inertia::render('AccessRequests/Index', [
             'people' => $people,
-            'systems' => SystemEntry::where('status', 'active')
-                ->connectable()
-                ->orderBy('name')
-                ->get(['id', 'key', 'name', 'alias_column', 'alias_required']),
+            'systems' => $systems,
         ]);
     }
 

@@ -134,6 +134,8 @@ const form = useForm({
     email_column: '',
     password_column: '',
     password_hash_algo: 'bcrypt',
+    password_hash_key: '',
+    has_hash_key: false,
     model_type: 'App\\Models\\User',
 
     role_mechanism: 'none',
@@ -144,6 +146,7 @@ const form = useForm({
     role_pivot_user_column: 'user_id',
     role_pivot_role_column: 'role_id',
     hidden_roles_text: '',
+    mandatory_roles_text: '',
 
     active_type: '',
     active_column: '',
@@ -196,6 +199,8 @@ function openEdit(system) {
     form.email_column = system.email_column ?? 'email';
     form.password_column = system.password_column ?? 'password';
     form.password_hash_algo = system.password_hash_algo ?? 'bcrypt';
+    form.password_hash_key = '';
+    form.has_hash_key = system.has_hash_key ?? false;
     form.model_type = system.model_type ?? 'App\\Models\\User';
 
     form.role_mechanism = system.role_mechanism ?? 'none';
@@ -206,6 +211,7 @@ function openEdit(system) {
     form.role_pivot_user_column = system.role_pivot_user_column ?? 'user_id';
     form.role_pivot_role_column = system.role_pivot_role_column ?? 'role_id';
     form.hidden_roles_text = system.hidden_roles_text ?? '';
+    form.mandatory_roles_text = system.mandatory_roles_text ?? '';
 
     form.active_type = system.active_type ?? '';
     form.active_column = system.active_column ?? '';
@@ -852,12 +858,25 @@ onMounted(() => {
                                 <select v-model="form.password_hash_algo" class="mt-1 block w-full rounded-md border-slate-300 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200">
                                     <option value="bcrypt">Bcrypt (estándar Laravel)</option>
                                     <option value="sha256">SHA-256</option>
+                                    <option value="hmac_sha256">HMAC-SHA-256 (con clave)</option>
                                     <option value="sha1">SHA-1</option>
                                     <option value="md5">MD5</option>
                                     <option value="plain">Texto plano (sin hash)</option>
                                 </select>
                                 <p class="mt-1 text-xs text-slate-400">
                                     Cómo espera este sistema que se guarde la contraseña. Si no coincide, la cuenta se crea pero no puede iniciar sesión.
+                                </p>
+                            </div>
+                            <div v-if="form.password_hash_algo === 'hmac_sha256'">
+                                <InputLabel value="Clave HMAC" />
+                                <TextInput
+                                    v-model="form.password_hash_key"
+                                    type="text"
+                                    class="mt-1 block w-full"
+                                    :placeholder="form.has_hash_key ? 'Dejar en blanco para no cambiarla' : ''"
+                                />
+                                <p class="mt-1 text-xs text-slate-400">
+                                    Ej. framework Kohana (SIGEC): hash_key de application/config/auth.php. Sin la clave exacta, la contraseña nunca coincide aunque el rol y todo lo demás estén bien.
                                 </p>
                             </div>
                             <div>
@@ -936,6 +955,14 @@ onMounted(() => {
                             <TextInput v-model="form.hidden_roles_text" type="text" class="mt-1 block w-full" placeholder="empresa" />
                             <p class="mt-1 text-xs text-slate-400">
                                 Las cuentas con alguno de estos roles no aparecen en ningún listado, conteo ni búsqueda del IAM.
+                            </p>
+                        </div>
+
+                        <div v-if="form.role_mechanism === 'json' || form.role_mechanism === 'pivot'">
+                            <InputLabel value="Roles obligatorios para iniciar sesión (separados por coma)" />
+                            <TextInput v-model="form.mandatory_roles_text" type="text" class="mt-1 block w-full" placeholder="login" />
+                            <p class="mt-1 text-xs text-slate-400">
+                                Se asignan solos a cada cuenta nueva, además del rol que elija el admin (ej. SIGEC exige "login" aparte de "usuario"). Sin esto la cuenta se crea con la contraseña correcta pero el sistema le niega el acceso.
                             </p>
                         </div>
                     </section>

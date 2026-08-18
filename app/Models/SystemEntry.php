@@ -14,11 +14,11 @@ class SystemEntry extends Model
         'key', 'name', 'connection', 'users_table',
         'roles_table', 'model_type', 'status', 'notes',
         'repo_url', 'url_internal', 'url_external',
-        'name_column', 'last_name_column', 'email_column', 'password_column', 'password_hash_algo',
+        'name_column', 'last_name_column', 'email_column', 'password_column', 'password_hash_algo', 'password_hash_key',
         'role_pivot_table', 'role_pivot_user_column', 'role_pivot_role_column',
         'role_column', 'role_json_column',
         'active_column', 'active_type', 'active_values',
-        'alias_column', 'alias_required', 'hidden_roles',
+        'alias_column', 'alias_required', 'hidden_roles', 'mandatory_roles',
         'created_at_column', 'created_at_format',
         'db_driver', 'db_host', 'db_port', 'db_database', 'db_username', 'db_password',
         'extra_fields', 'visible_in_public_form', 'public_form_restrictions',
@@ -26,9 +26,11 @@ class SystemEntry extends Model
 
     protected $casts = [
         'db_password' => 'encrypted',
+        'password_hash_key' => 'encrypted',
         'extra_fields' => 'array',
         'public_form_restrictions' => 'array',
         'hidden_roles' => 'array',
+        'mandatory_roles' => 'array',
     ];
 
     public function accounts(): HasMany

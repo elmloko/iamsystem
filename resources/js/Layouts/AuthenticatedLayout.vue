@@ -5,9 +5,11 @@ import Dropdown from '@/Components/Dropdown.vue';
 import DropdownLink from '@/Components/DropdownLink.vue';
 import NavLink from '@/Components/NavLink.vue';
 import ResponsiveNavLink from '@/Components/ResponsiveNavLink.vue';
-import { Link } from '@inertiajs/vue3';
+import { Link, usePage } from '@inertiajs/vue3';
+import { computed } from 'vue';
 
 const showingNavigationDropdown = ref(false);
+const pendingAccessRequestsCount = computed(() => usePage().props.pendingAccessRequestsCount ?? 0);
 </script>
 
 <template>
@@ -59,6 +61,12 @@ const showingNavigationDropdown = ref(false);
                                     :active="route().current('access-requests.index')"
                                 >
                                     Solicitudes
+                                    <span
+                                        v-if="pendingAccessRequestsCount > 0"
+                                        class="ms-1.5 inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-amber-500 px-1.5 py-0.5 text-xs font-semibold leading-none text-white"
+                                    >
+                                        {{ pendingAccessRequestsCount }}
+                                    </span>
                                 </NavLink>
                                 <NavLink
                                     :href="route('admins.index')"
@@ -201,7 +209,15 @@ const showingNavigationDropdown = ref(false);
                             :href="route('access-requests.index')"
                             :active="route().current('access-requests.index')"
                         >
-                            Solicitudes
+                            <span class="inline-flex items-center gap-1.5">
+                                Solicitudes
+                                <span
+                                    v-if="pendingAccessRequestsCount > 0"
+                                    class="inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-amber-500 px-1.5 py-0.5 text-xs font-semibold leading-none text-white"
+                                >
+                                    {{ pendingAccessRequestsCount }}
+                                </span>
+                            </span>
                         </ResponsiveNavLink>
                         <ResponsiveNavLink
                             :href="route('admins.index')"

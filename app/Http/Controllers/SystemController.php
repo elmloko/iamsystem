@@ -22,16 +22,18 @@ class SystemController extends Controller
     {
         $systems = SystemEntry::orderBy('name')->get([
             'id', 'key', 'name', 'status', 'connection', 'notes', 'repo_url', 'url_internal', 'url_external', 'visible_in_public_form',
-            'users_table', 'name_column', 'last_name_column', 'email_column', 'password_column', 'password_hash_algo', 'model_type',
+            'users_table', 'name_column', 'last_name_column', 'email_column', 'password_column', 'password_hash_algo', 'password_hash_key', 'model_type',
             'roles_table', 'role_column', 'role_json_column',
             'role_pivot_table', 'role_pivot_user_column', 'role_pivot_role_column',
             'active_column', 'active_type', 'active_values',
-            'alias_column', 'hidden_roles',
+            'alias_column', 'hidden_roles', 'mandatory_roles',
             'created_at_column', 'created_at_format',
             'db_driver', 'db_host', 'db_port', 'db_database', 'db_username', 'db_password',
         ])->map(function (SystemEntry $system) {
             $data = $system->toArray();
             $data['has_password'] = filled($system->db_password);
+            $data['has_hash_key'] = filled($system->password_hash_key);
+            unset($data['password_hash_key']);
             $data['role_mechanism'] = match (true) {
                 (bool) $system->role_column => 'column',
                 (bool) $system->role_json_column => 'json',
@@ -42,6 +44,7 @@ class SystemController extends Controller
                 ? implode(', ', json_decode($system->active_values, true) ?? [])
                 : '';
             $data['hidden_roles_text'] = $system->hidden_roles ? implode(', ', $system->hidden_roles) : '';
+            $data['mandatory_roles_text'] = $system->mandatory_roles ? implode(', ', $system->mandatory_roles) : '';
             unset($data['db_password']);
 
             return $data;
@@ -69,8 +72,12 @@ class SystemController extends Controller
             unset($data['db_password']);
         }
 
+        if (blank($data['password_hash_key'] ?? null)) {
+            unset($data['password_hash_key']);
+        }
+
         $changes = collect($data)
-            ->except(['db_password'])
+            ->except(['db_password', 'password_hash_key'])
             ->filter(fn ($value, $key) => $system->{$key} != $value)
             ->keys()
             ->all();
@@ -136,7 +143,8 @@ class SystemController extends Controller
             'last_name_column' => ['nullable', 'string', 'max:255'],
             'email_column' => ['required', 'string', 'max:255'],
             'password_column' => ['required', 'string', 'max:255'],
-            'password_hash_algo' => ['nullable', Rule::in(['bcrypt', 'sha256', 'md5', 'sha1', 'plain'])],
+            'password_hash_algo' => ['nullable', Rule::in(['bcrypt', 'sha256', 'hmac_sha256', 'md5', 'sha1', 'plain'])],
+            'password_hash_key' => ['nullable', 'string'],
             'model_type' => ['nullable', 'string', 'max:255'],
 
             'role_mechanism' => ['required', Rule::in(['none', 'column', 'json', 'pivot'])],
@@ -157,6 +165,7 @@ class SystemController extends Controller
             'created_at_format' => ['nullable', Rule::in(['datetime', 'unix'])],
 
             'hidden_roles_text' => ['nullable', 'string'],
+            'mandatory_roles_text' => ['nullable', 'string'],
         ];
 
         if ($isCreate) {
@@ -187,6 +196,12 @@ class SystemController extends Controller
         $hiddenRoles = array_values(array_filter(array_map('trim', explode(',', $data['hidden_roles_text'] ?? ''))));
         $data['hidden_roles'] = $hiddenRoles ?: null;
         unset($data['hidden_roles_text']);
+
+        // Los roles obligatorios solo tienen sentido donde una cuenta puede
+        // tener más de un rol (pivote o columna JSON).
+        $mandatoryRoles = array_values(array_filter(array_map('trim', explode(',', $data['mandatory_roles_text'] ?? ''))));
+        $data['mandatory_roles'] = $mandatoryRoles && ! $data['role_column'] ? $mandatoryRoles : null;
+        unset($data['mandatory_roles_text']);
 
         return $data;
     }
