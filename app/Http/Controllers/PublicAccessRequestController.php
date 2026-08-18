@@ -8,6 +8,7 @@ use App\Services\SystemAccountProvisioner;
 use App\Support\Audit;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rules\Password;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -48,7 +49,7 @@ class PublicAccessRequestController extends Controller
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255'],
-            'password' => ['required', 'string', 'min:8', 'confirmed'],
+            'password' => ['required', 'string', 'confirmed', Password::min(8)->letters()->numbers()],
             'systems' => ['required', 'array', 'min:1'],
             'systems.*.system_id' => ['required', 'exists:systems,id'],
             'systems.*.role_id' => ['nullable'],

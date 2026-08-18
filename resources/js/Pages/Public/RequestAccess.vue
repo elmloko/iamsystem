@@ -5,7 +5,7 @@ import TextInput from '@/Components/TextInput.vue';
 import InputError from '@/Components/InputError.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import { Head, Link, useForm } from '@inertiajs/vue3';
-import { reactive } from 'vue';
+import { computed, reactive } from 'vue';
 
 defineProps({
     systems: Array,
@@ -17,6 +17,38 @@ const form = useForm({
     password: '',
     password_confirmation: '',
     systems: [], // [{ system_id, role_id, role_name, alias, extra_fields }]
+});
+
+// Requisitos de la contraseña + "termómetro" visual de qué tan buena es.
+const passwordChecks = computed(() => {
+    const pwd = form.password || '';
+    return {
+        length: pwd.length >= 8,
+        letter: /[a-zA-Z]/.test(pwd),
+        number: /[0-9]/.test(pwd),
+        upperLower: /[a-z]/.test(pwd) && /[A-Z]/.test(pwd),
+        special: /[^A-Za-z0-9]/.test(pwd),
+    };
+});
+
+const strengthLevels = [
+    { label: 'Muy débil', barClass: 'bg-red-500', textClass: 'text-red-600 dark:text-red-400' },
+    { label: 'Débil', barClass: 'bg-orange-500', textClass: 'text-orange-600 dark:text-orange-400' },
+    { label: 'Aceptable', barClass: 'bg-amber-500', textClass: 'text-amber-600 dark:text-amber-400' },
+    { label: 'Buena', barClass: 'bg-lime-500', textClass: 'text-lime-600 dark:text-lime-400' },
+    { label: 'Fuerte', barClass: 'bg-emerald-500', textClass: 'text-emerald-600 dark:text-emerald-400' },
+];
+
+const passwordStrength = computed(() => {
+    const checks = passwordChecks.value;
+    let score = 0;
+    if (checks.length) score++;
+    if (checks.letter && checks.number) score++;
+    if (checks.upperLower) score++;
+    if (checks.special) score++;
+    if ((form.password || '').length >= 12) score++;
+
+    return { score, percent: (score / strengthLevels.length) * 100, ...strengthLevels[Math.min(score, strengthLevels.length - 1)] };
 });
 
 const rolesState = reactive({});
@@ -151,6 +183,30 @@ function submit() {
                         <InputLabel for="password" value="Contraseña" />
                         <TextInput id="password" v-model="form.password" type="password" class="mt-1 block w-full" required minlength="8" autocomplete="new-password" />
                         <InputError :message="form.errors.password" class="mt-1" />
+
+                        <div v-if="form.password" class="mt-2">
+                            <div class="h-1.5 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                                <div
+                                    class="h-full rounded-full transition-all duration-200"
+                                    :class="passwordStrength.barClass"
+                                    :style="{ width: `${passwordStrength.percent}%` }"
+                                ></div>
+                            </div>
+                            <p class="mt-1 text-xs font-medium" :class="passwordStrength.textClass">
+                                {{ passwordStrength.label }}
+                            </p>
+                            <ul class="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-xs">
+                                <li :class="passwordChecks.length ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'">
+                                    {{ passwordChecks.length ? '✓' : '○' }} Al menos 8 caracteres
+                                </li>
+                                <li :class="passwordChecks.letter ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'">
+                                    {{ passwordChecks.letter ? '✓' : '○' }} Letras
+                                </li>
+                                <li :class="passwordChecks.number ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'">
+                                    {{ passwordChecks.number ? '✓' : '○' }} Números
+                                </li>
+                            </ul>
+                        </div>
                     </div>
                     <div>
                         <InputLabel for="password_confirmation" value="Confirmar contraseña" />
@@ -159,6 +215,7 @@ function submit() {
                 </div>
                 <p class="text-xs text-slate-400">
                     Esta será la contraseña de tus cuentas nuevas. Se usará la misma en todos los sistemas que elijas.
+                    Debe tener al menos 8 caracteres, con letras y números.
                 </p>
 
                 <div>
