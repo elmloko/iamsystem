@@ -262,10 +262,15 @@ class SystemAccountProvisioner
                     continue;
                 }
 
-                $row[$field['column']] = match ($field['type']) {
-                    'multiselect' => ($field['store_as'] ?? 'json') === 'csv'
+                $row[$field['column']] = match (true) {
+                    $field['type'] === 'multiselect' => ($field['store_as'] ?? 'json') === 'csv'
                         ? implode(',', (array) $value)
                         : json_encode(array_values((array) $value)),
+                    // Select de una sola opción respaldado por una columna json
+                    // (ej. "regionales" en bolipost): se guarda como array de
+                    // un elemento para no romper el código del sistema remoto,
+                    // que espera siempre un arreglo ahí.
+                    ($field['store_as'] ?? null) === 'json_array' => json_encode([$value]),
                     default => $value,
                 };
             }
