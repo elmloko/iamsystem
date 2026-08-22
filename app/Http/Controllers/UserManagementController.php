@@ -197,10 +197,15 @@ class UserManagementController extends Controller
     public function updateAccount(Request $request, SystemEntry $system, SystemAccountProvisioner $provisioner)
     {
         $data = $request->validate([
-            'remote_user_id' => ['required', 'integer'],
+            'remote_user_id' => ['required'],
             'first_name' => ['required', 'string', 'max:255'],
             'last_name' => ['nullable', 'string', 'max:255'],
-            'email' => ['required', 'email', 'max:255'],
+            // Algunos sistemas legados (ej. CDS) no tienen columna de email
+            // real: email_column apunta al usuario de login, que no tiene
+            // formato de correo.
+            'email' => $system->email_is_login
+                ? ['required', 'string', 'max:255']
+                : ['required', 'email', 'max:255'],
             'alias' => ['nullable', 'string', 'max:255'],
             'password' => ['nullable', 'string', 'min:8'],
         ]);
@@ -228,7 +233,7 @@ class UserManagementController extends Controller
     public function updateAccountStatus(Request $request, SystemEntry $system, SystemAccountProvisioner $provisioner)
     {
         $data = $request->validate([
-            'remote_user_id' => ['required', 'integer'],
+            'remote_user_id' => ['required'],
             'active' => ['required', 'boolean'],
         ]);
 
@@ -248,7 +253,7 @@ class UserManagementController extends Controller
     public function addAccountRole(Request $request, SystemEntry $system, SystemAccountProvisioner $provisioner)
     {
         $data = $request->validate([
-            'remote_user_id' => ['required', 'integer'],
+            'remote_user_id' => ['required'],
             'role_id' => ['required'],
             'role_name' => ['nullable', 'string'],
         ]);
@@ -268,7 +273,7 @@ class UserManagementController extends Controller
     public function removeAccountRole(Request $request, SystemEntry $system, SystemAccountProvisioner $provisioner)
     {
         $data = $request->validate([
-            'remote_user_id' => ['required', 'integer'],
+            'remote_user_id' => ['required'],
             'role_id' => ['required'],
         ]);
 

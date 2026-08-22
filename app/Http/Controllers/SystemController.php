@@ -22,10 +22,10 @@ class SystemController extends Controller
     {
         $systems = SystemEntry::orderBy('name')->get([
             'id', 'key', 'name', 'status', 'connection', 'notes', 'repo_url', 'url_internal', 'url_external', 'visible_in_public_form',
-            'users_table', 'name_column', 'last_name_column', 'email_column', 'password_column', 'password_hash_algo', 'password_hash_key', 'model_type',
-            'roles_table', 'role_column', 'role_json_column',
+            'users_table', 'id_column', 'filter_column', 'filter_value', 'name_column', 'last_name_column', 'email_column', 'email_is_login', 'password_column', 'password_hash_algo', 'password_hash_key', 'model_type',
+            'roles_table', 'roles_id_column', 'roles_name_column', 'role_column', 'role_json_column',
             'role_pivot_table', 'role_pivot_user_column', 'role_pivot_role_column',
-            'active_column', 'active_type', 'active_values',
+            'active_column', 'active_type', 'active_values', 'active_write_value', 'inactive_write_value',
             'alias_column', 'hidden_roles', 'mandatory_roles',
             'created_at_column', 'created_at_format',
             'db_driver', 'db_host', 'db_port', 'db_database', 'db_username', 'db_password',
@@ -139,9 +139,13 @@ class SystemController extends Controller
             'db_password' => ['nullable', 'string'],
 
             'users_table' => ['required', 'string', 'max:255'],
+            'id_column' => ['nullable', 'string', 'max:255'],
+            'filter_column' => ['nullable', 'string', 'max:255'],
+            'filter_value' => ['nullable', 'string', 'max:255'],
             'name_column' => ['required', 'string', 'max:255'],
             'last_name_column' => ['nullable', 'string', 'max:255'],
             'email_column' => ['required', 'string', 'max:255'],
+            'email_is_login' => ['nullable', 'boolean'],
             'password_column' => ['required', 'string', 'max:255'],
             'password_hash_algo' => ['nullable', Rule::in(['bcrypt', 'sha256', 'hmac_sha256', 'md5', 'sha1', 'plain'])],
             'password_hash_key' => ['nullable', 'string'],
@@ -151,6 +155,8 @@ class SystemController extends Controller
             'role_column' => ['nullable', 'string', 'max:255'],
             'role_json_column' => ['nullable', 'string', 'max:255'],
             'roles_table' => ['nullable', 'string', 'max:255'],
+            'roles_id_column' => ['nullable', 'string', 'max:255'],
+            'roles_name_column' => ['nullable', 'string', 'max:255'],
             'role_pivot_table' => ['nullable', 'string', 'max:255'],
             'role_pivot_user_column' => ['nullable', 'string', 'max:255'],
             'role_pivot_role_column' => ['nullable', 'string', 'max:255'],
@@ -158,6 +164,8 @@ class SystemController extends Controller
             'active_type' => ['nullable', Rule::in(['boolean', 'soft_delete', 'text'])],
             'active_column' => ['nullable', 'string', 'max:255'],
             'active_values_text' => ['nullable', 'string'],
+            'active_write_value' => ['nullable', 'string', 'max:255'],
+            'inactive_write_value' => ['nullable', 'string', 'max:255'],
 
             'alias_column' => ['nullable', 'string', 'max:255'],
 
@@ -182,14 +190,25 @@ class SystemController extends Controller
             'pivot' => [null, null, $data['roles_table'] ?? null, $data['role_pivot_table'] ?? null],
             default => [null, null, null, null],
         };
+        if ($data['role_mechanism'] !== 'pivot') {
+            $data['roles_id_column'] = null;
+            $data['roles_name_column'] = null;
+        }
         unset($data['role_mechanism']);
 
         if (! $data['active_type']) {
             $data['active_column'] = null;
             $data['active_values'] = null;
+            $data['active_write_value'] = null;
+            $data['inactive_write_value'] = null;
         } else {
             $values = array_values(array_filter(array_map('trim', explode(',', $data['active_values_text'] ?? ''))));
             $data['active_values'] = $values ? json_encode($values) : null;
+
+            if ($data['active_type'] !== 'text') {
+                $data['active_write_value'] = null;
+                $data['inactive_write_value'] = null;
+            }
         }
         unset($data['active_values_text']);
 
@@ -226,10 +245,16 @@ class SystemController extends Controller
 
         $tempName = 'systest_'.uniqid();
 
+        $defaultPort = match ($data['db_driver']) {
+            'mysql' => 3306,
+            'sqlsrv' => 1433,
+            default => 5432,
+        };
+
         Config::set("database.connections.{$tempName}", [
             'driver' => $data['db_driver'],
             'host' => $data['db_host'],
-            'port' => $data['db_port'] ?: ($data['db_driver'] === 'mysql' ? 3306 : 5432),
+            'port' => $data['db_port'] ?: $defaultPort,
             'database' => $data['db_database'],
             'username' => $data['db_username'],
             'password' => $password,
@@ -237,6 +262,7 @@ class SystemController extends Controller
             'prefix' => '',
             'search_path' => 'public',
             'sslmode' => 'prefer',
+            'trust_server_certificate' => $data['db_driver'] === 'sqlsrv' ? true : null,
         ]);
 
         try {
@@ -314,11 +340,16 @@ class SystemController extends Controller
 
             $tempName = "sysverify_{$system->id}";
             $driver = $system->db_driver ?: 'pgsql';
+            $defaultPort = match ($driver) {
+                'mysql' => 3306,
+                'sqlsrv' => 1433,
+                default => 5432,
+            };
 
             Config::set("database.connections.{$tempName}", [
                 'driver' => $driver,
                 'host' => $system->db_host,
-                'port' => $system->db_port ?: ($driver === 'mysql' ? 3306 : 5432),
+                'port' => $system->db_port ?: $defaultPort,
                 'database' => $system->db_database,
                 'username' => $system->db_username,
                 'password' => $system->db_password,
@@ -326,6 +357,7 @@ class SystemController extends Controller
                 'prefix' => '',
                 'search_path' => 'public',
                 'sslmode' => 'prefer',
+                'trust_server_certificate' => $driver === 'sqlsrv' ? true : null,
                 'options' => [PDO::ATTR_TIMEOUT => 3],
             ]);
 

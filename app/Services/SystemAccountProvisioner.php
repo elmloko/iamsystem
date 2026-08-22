@@ -71,8 +71,8 @@ class SystemAccountProvisioner
         try {
             return DB::connection($system->remoteConnectionName())
                 ->table($system->roles_table)
-                ->select('id', 'name')
-                ->orderBy('name')
+                ->selectRaw("RTRIM(CAST({$system->rolesIdColumn()} AS CHAR(255))) as id, {$system->rolesNameColumn()} as name")
+                ->orderBy($system->rolesIdColumn())
                 ->get();
         } catch (Throwable $e) {
             Log::warning("No se pudo leer roles de [{$system->key}]: {$e->getMessage()}");
@@ -275,7 +275,7 @@ class SystemAccountProvisioner
                 };
             }
 
-            $remoteId = DB::connection($connection)->table($usersTable)->insertGetId($row);
+            $remoteId = DB::connection($connection)->table($usersTable)->insertGetId($row, $system->idColumn());
 
             $roleMessage = null;
 
@@ -323,7 +323,7 @@ class SystemAccountProvisioner
      * Valida que el nuevo correo no choque con otra fila de ese mismo
      * sistema antes de escribir.
      */
-    public function updateAccountFields(SystemEntry $system, int $remoteUserId, string $firstName, ?string $lastName, string $email, ?string $alias = null, ?string $password = null): array
+    public function updateAccountFields(SystemEntry $system, int|string $remoteUserId, string $firstName, ?string $lastName, string $email, ?string $alias = null, ?string $password = null): array
     {
         if (! $system->isActive()) {
             return ['status' => 'failed', 'message' => 'Sistema no configurado (conexión pendiente).'];
@@ -335,7 +335,7 @@ class SystemAccountProvisioner
         try {
             $duplicate = DB::connection($connection)->table($usersTable)
                 ->where($system->email_column, $email)
-                ->where('id', '!=', $remoteUserId)
+                ->where($system->idColumn(), '!=', $remoteUserId)
                 ->exists();
 
             if ($duplicate) {
@@ -359,7 +359,7 @@ class SystemAccountProvisioner
                 $row[$system->password_column] = $this->hashPassword($system, $password);
             }
 
-            DB::connection($connection)->table($usersTable)->where('id', $remoteUserId)->update($row);
+            DB::connection($connection)->table($usersTable)->where($system->idColumn(), $remoteUserId)->update($row);
 
             return ['status' => 'updated'];
         } catch (Throwable $e) {
@@ -375,24 +375,33 @@ class SystemAccountProvisioner
      * texto (active_type = 'text') no se sabe con certeza qué valor escribir
      * para "de baja", así que se rechaza en vez de arriesgar datos.
      */
-    public function setAccountActive(SystemEntry $system, int $remoteUserId, bool $active): array
+    public function setAccountActive(SystemEntry $system, int|string $remoteUserId, bool $active): array
     {
         if (! $system->isActive()) {
             return ['status' => 'failed', 'message' => 'Sistema no configurado (conexión pendiente).'];
         }
 
-        if (! in_array($system->active_type, ['boolean', 'soft_delete'], true)) {
+        if (! in_array($system->active_type, ['boolean', 'soft_delete', 'text'], true)) {
             return ['status' => 'failed', 'message' => 'Este sistema no permite cambiar el estado desde el IAM.'];
         }
 
+        // En "text" active_values sirve para LEER (puede tener varios
+        // valores que cuentan como activo), pero para ESCRIBIR hace falta
+        // saber el valor exacto de alta y de baja (ej. CDS/IPS: "3"/"2").
+        if ($system->active_type === 'text' && (blank($system->active_write_value) || blank($system->inactive_write_value))) {
+            return ['status' => 'failed', 'message' => 'Este sistema usa estado de texto pero no tiene configurados los valores de alta/baja.'];
+        }
+
         try {
-            $value = $system->active_type === 'soft_delete'
-                ? ($active ? null : now())
-                : $active;
+            $value = match ($system->active_type) {
+                'soft_delete' => $active ? null : now(),
+                'text' => $active ? $system->active_write_value : $system->inactive_write_value,
+                default => $active,
+            };
 
             DB::connection($system->remoteConnectionName())
                 ->table($system->users_table ?: 'users')
-                ->where('id', $remoteUserId)
+                ->where($system->idColumn(), $remoteUserId)
                 ->update([$system->active_column => $value]);
 
             return ['status' => 'updated'];
@@ -410,7 +419,7 @@ class SystemAccountProvisioner
      * con rol como columna de texto simple solo se puede reemplazar (no
      * soportan más de un rol por usuario).
      */
-    public function addAccountRole(SystemEntry $system, int $remoteUserId, int|string $roleId, ?string $roleName): array
+    public function addAccountRole(SystemEntry $system, int|string $remoteUserId, int|string $roleId, ?string $roleName): array
     {
         if (! $system->isActive()) {
             return ['status' => 'failed', 'message' => 'Sistema no configurado (conexión pendiente).'];
@@ -422,14 +431,14 @@ class SystemAccountProvisioner
         try {
             if ($system->role_column) {
                 DB::connection($connection)->table($usersTable)
-                    ->where('id', $remoteUserId)
+                    ->where($system->idColumn(), $remoteUserId)
                     ->update([$system->role_column => $roleId]);
 
                 return ['status' => 'updated', 'message' => 'Este sistema solo admite un rol por usuario; se reemplazó el anterior.'];
             }
 
             if ($system->role_json_column) {
-                $current = DB::connection($connection)->table($usersTable)->where('id', $remoteUserId)->value($system->role_json_column);
+                $current = DB::connection($connection)->table($usersTable)->where($system->idColumn(), $remoteUserId)->value($system->role_json_column);
                 $roles = $this->decodeRoleArray($current);
 
                 if ($roles->contains($roleId)) {
@@ -439,7 +448,7 @@ class SystemAccountProvisioner
                 $roles->push($roleId);
 
                 DB::connection($connection)->table($usersTable)
-                    ->where('id', $remoteUserId)
+                    ->where($system->idColumn(), $remoteUserId)
                     ->update([$system->role_json_column => json_encode($roles->values()->all())]);
 
                 return ['status' => 'updated'];
@@ -485,7 +494,7 @@ class SystemAccountProvisioner
      * simple, "quitar" deja la columna en null (no hay otro rol al que
      * volver). En pivote/JSON, elimina solo esa relación/valor puntual.
      */
-    public function removeAccountRole(SystemEntry $system, int $remoteUserId, int|string $roleId): array
+    public function removeAccountRole(SystemEntry $system, int|string $remoteUserId, int|string $roleId): array
     {
         if (! $system->isActive()) {
             return ['status' => 'failed', 'message' => 'Sistema no configurado (conexión pendiente).'];
@@ -503,20 +512,20 @@ class SystemAccountProvisioner
         try {
             if ($system->role_column) {
                 DB::connection($connection)->table($usersTable)
-                    ->where('id', $remoteUserId)
+                    ->where($system->idColumn(), $remoteUserId)
                     ->update([$system->role_column => null]);
 
                 return ['status' => 'updated'];
             }
 
             if ($system->role_json_column) {
-                $current = DB::connection($connection)->table($usersTable)->where('id', $remoteUserId)->value($system->role_json_column);
+                $current = DB::connection($connection)->table($usersTable)->where($system->idColumn(), $remoteUserId)->value($system->role_json_column);
                 $roles = $this->decodeRoleArray($current)
                     ->reject(fn ($value) => (string) $value === (string) $roleId)
                     ->values();
 
                 DB::connection($connection)->table($usersTable)
-                    ->where('id', $remoteUserId)
+                    ->where($system->idColumn(), $remoteUserId)
                     ->update([$system->role_json_column => json_encode($roles->all())]);
 
                 return ['status' => 'updated'];
@@ -553,6 +562,9 @@ class SystemAccountProvisioner
      */
     private function syncExistingAccount(SystemEntry $system, string $connection, string $usersTable, object $existing, Person $person, int|string|null $roleId, ?string $roleName, Collection $mandatoryRoles): array
     {
+        $idCol = $system->idColumn();
+        $existingId = $existing->{$idCol};
+
         $nameRow = [];
 
         if ($system->last_name_column) {
@@ -563,33 +575,33 @@ class SystemAccountProvisioner
             $nameRow[$system->name_column] = $person->name;
         }
 
-        DB::connection($connection)->table($usersTable)->where('id', $existing->id)->update($nameRow);
+        DB::connection($connection)->table($usersTable)->where($idCol, $existingId)->update($nameRow);
 
         $wantedRoles = collect([$roleId])->filter()->merge($mandatoryRoles)->unique()->values();
         $roleMessage = null;
 
         if ($system->role_column) {
             if ($roleId) {
-                DB::connection($connection)->table($usersTable)->where('id', $existing->id)->update([$system->role_column => $roleId]);
+                DB::connection($connection)->table($usersTable)->where($idCol, $existingId)->update([$system->role_column => $roleId]);
             }
         } elseif ($system->role_json_column) {
-            $current = DB::connection($connection)->table($usersTable)->where('id', $existing->id)->value($system->role_json_column);
+            $current = DB::connection($connection)->table($usersTable)->where($idCol, $existingId)->value($system->role_json_column);
             $roles = $this->decodeRoleArray($current)->merge($wantedRoles)->unique()->values();
 
             if ($roles->isNotEmpty()) {
-                DB::connection($connection)->table($usersTable)->where('id', $existing->id)->update([$system->role_json_column => json_encode($roles->all())]);
+                DB::connection($connection)->table($usersTable)->where($idCol, $existingId)->update([$system->role_json_column => json_encode($roles->all())]);
             }
         } elseif ($system->role_pivot_table && $wantedRoles->isNotEmpty()) {
             try {
                 $existingRoleIds = DB::connection($connection)->table($system->role_pivot_table)
-                    ->where($system->role_pivot_user_column, $existing->id)
+                    ->where($system->role_pivot_user_column, $existingId)
                     ->pluck($system->role_pivot_role_column);
 
                 $missingRoles = $wantedRoles->reject(fn ($id) => $existingRoleIds->contains($id));
 
-                $pivotRows = $missingRoles->map(function ($id) use ($system, $existing) {
+                $pivotRows = $missingRoles->map(function ($id) use ($system, $existingId) {
                     $pivotRow = [
-                        $system->role_pivot_user_column => $existing->id,
+                        $system->role_pivot_user_column => $existingId,
                         $system->role_pivot_role_column => $id,
                     ];
 
@@ -611,7 +623,7 @@ class SystemAccountProvisioner
 
         return [
             'status' => 'exists',
-            'remote_user_id' => $existing->id,
+            'remote_user_id' => $existingId,
             'role_name' => $roleName,
             'message' => 'Ya existía un usuario con ese email en este sistema: se actualizó el nombre y se completaron los roles faltantes.'.$roleMessage,
         ];
@@ -650,8 +662,8 @@ class SystemAccountProvisioner
         try {
             $ids = DB::connection($system->remoteConnectionName())
                 ->table($system->roles_table)
-                ->whereIn('name', $names->all())
-                ->pluck('id');
+                ->whereIn($system->rolesNameColumn(), $names->all())
+                ->pluck($system->rolesIdColumn());
 
             if ($ids->count() < $names->count()) {
                 Log::warning("Roles obligatorios inexistentes en [{$system->key}]: configurados [{$names->implode(', ')}], encontrados {$ids->count()}.");
@@ -735,7 +747,7 @@ class SystemAccountProvisioner
                     ? "LOWER(TRIM(CONCAT({$system->name_column}, ' ', {$system->last_name_column})))"
                     : "LOWER(TRIM({$system->name_column}))";
 
-                $selectCols = "id, {$system->name_column} as first_name, {$system->email_column} as email";
+                $selectCols = "{$system->idColumn()} as id, {$system->name_column} as first_name, {$system->email_column} as email";
                 if ($hasCreatedAt) {
                     $selectCols .= ", created_at";
                 }
@@ -761,6 +773,7 @@ class SystemAccountProvisioner
                     ->selectRaw($selectCols);
 
                 $system->excludeHiddenRoles($detailBuilder);
+                $system->applyRowFilter($detailBuilder);
 
                 $rows = $detailBuilder->get();
 
@@ -786,10 +799,12 @@ class SystemAccountProvisioner
                         'alias' => $row->inline_alias ?? null,
                         'has_alias' => (bool) $system->alias_column,
                         'email' => $row->email,
+                        'email_is_login' => (bool) $system->email_is_login,
                         'created_at' => $row->created_at ?? null,
                         'roles' => $roles,
                         'active' => $this->resolveActiveStatus($system, $row->inline_active ?? null),
-                        'active_editable' => in_array($system->active_type, ['boolean', 'soft_delete'], true),
+                        'active_editable' => in_array($system->active_type, ['boolean', 'soft_delete'], true)
+                            || ($system->active_type === 'text' && filled($system->active_write_value) && filled($system->inactive_write_value)),
                         'roles_editable' => (bool) ($system->role_pivot_table && $system->roles_table) || (bool) $system->role_json_column || (bool) $system->role_column,
                         'single_role' => (bool) $system->role_column,
                     ]);
@@ -836,7 +851,7 @@ class SystemAccountProvisioner
         };
     }
 
-    private function fetchRolesForUser(SystemEntry $system, int $remoteUserId): array
+    private function fetchRolesForUser(SystemEntry $system, int|string $remoteUserId): array
     {
         if (! $system->role_pivot_table || ! $system->roles_table) {
             return [];
@@ -849,7 +864,7 @@ class SystemAccountProvisioner
                     $system->roles_table,
                     "{$system->role_pivot_table}.{$system->role_pivot_role_column}",
                     '=',
-                    "{$system->roles_table}.id"
+                    "{$system->roles_table}.{$system->rolesIdColumn()}"
                 )
                 ->where("{$system->role_pivot_table}.{$system->role_pivot_user_column}", $remoteUserId);
 
@@ -859,7 +874,7 @@ class SystemAccountProvisioner
             }
 
             return $builder
-                ->select("{$system->roles_table}.id", "{$system->roles_table}.name")
+                ->selectRaw("RTRIM(CAST({$system->roles_table}.{$system->rolesIdColumn()} AS CHAR(255))) as id, {$system->roles_table}.{$system->rolesNameColumn()} as name")
                 ->get()
                 ->map(fn ($r) => ['id' => $r->id, 'name' => $r->name])
                 ->all();
@@ -893,7 +908,7 @@ class SystemAccountProvisioner
                     ? "concat({$system->name_column}, ' ', {$system->last_name_column})"
                     : $system->name_column;
 
-                $selectCols = "id, {$nameExpr} as name, {$system->email_column} as email";
+                $selectCols = "{$system->idColumn()} as id, {$nameExpr} as name, {$system->email_column} as email";
                 if ($system->active_column) {
                     $selectCols .= ", {$system->active_column} as inline_active";
                 }
@@ -903,6 +918,7 @@ class SystemAccountProvisioner
                     ->selectRaw($selectCols);
 
                 $system->excludeHiddenRoles($builder);
+                $system->applyRowFilter($builder);
 
                 if ($query) {
                     $builder->where(function ($q) use ($system, $query) {
@@ -979,7 +995,7 @@ class SystemAccountProvisioner
                     ? "concat({$system->name_column}, ' ', {$system->last_name_column})"
                     : $system->name_column;
 
-                $selectCols = "id, {$nameExpr} as name, {$system->email_column} as email";
+                $selectCols = "{$system->idColumn()} as id, {$nameExpr} as name, {$system->email_column} as email";
                 if ($hasCreatedAt) {
                     $selectCols .= ", created_at";
                 }
@@ -1001,6 +1017,7 @@ class SystemAccountProvisioner
                     ->selectRaw($selectCols);
 
                 $system->excludeHiddenRoles($builder);
+                $system->applyRowFilter($builder);
 
                 if ($query) {
                     $builder->where(function ($q) use ($system, $query) {

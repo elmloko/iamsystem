@@ -672,7 +672,7 @@ function formatDate(value) {
                             <span class="text-xs text-gray-400">Creado: {{ formatDate(account.created_at) }}</span>
                         </div>
                         <dl class="grid grid-cols-3 gap-1 text-sm">
-                            <dt class="text-gray-400">Correo</dt>
+                            <dt class="text-gray-400">{{ account.email_is_login ? 'Alias de ingreso' : 'Correo' }}</dt>
                             <dd class="col-span-2 text-gray-700 dark:text-gray-200">{{ account.email }}</dd>
 
                             <template v-if="account.has_alias">
@@ -767,10 +767,10 @@ function formatDate(value) {
                                 />
                             </div>
                             <div>
-                                <label class="text-xs text-gray-400">Correo</label>
+                                <label class="text-xs text-gray-400">{{ account.email_is_login ? 'Alias de ingreso' : 'Correo' }}</label>
                                 <input
                                     v-model="account.email"
-                                    type="email"
+                                    :type="account.email_is_login ? 'text' : 'email'"
                                     class="mt-1 block w-full rounded-md border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200"
                                 />
                             </div>

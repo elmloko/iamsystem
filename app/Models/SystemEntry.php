@@ -11,13 +11,13 @@ class SystemEntry extends Model
     protected $table = 'systems';
 
     protected $fillable = [
-        'key', 'name', 'connection', 'users_table',
-        'roles_table', 'model_type', 'status', 'notes',
+        'key', 'name', 'connection', 'users_table', 'id_column', 'filter_column', 'filter_value',
+        'roles_table', 'roles_id_column', 'roles_name_column', 'model_type', 'status', 'notes',
         'repo_url', 'url_internal', 'url_external',
-        'name_column', 'last_name_column', 'email_column', 'password_column', 'password_hash_algo', 'password_hash_key',
+        'name_column', 'last_name_column', 'email_column', 'email_is_login', 'password_column', 'password_hash_algo', 'password_hash_key',
         'role_pivot_table', 'role_pivot_user_column', 'role_pivot_role_column',
         'role_column', 'role_json_column',
-        'active_column', 'active_type', 'active_values',
+        'active_column', 'active_type', 'active_values', 'active_write_value', 'inactive_write_value',
         'alias_column', 'alias_required', 'hidden_roles', 'mandatory_roles',
         'created_at_column', 'created_at_format',
         'db_driver', 'db_host', 'db_port', 'db_database', 'db_username', 'db_password',
@@ -25,6 +25,7 @@ class SystemEntry extends Model
     ];
 
     protected $casts = [
+        'email_is_login' => 'boolean',
         'db_password' => 'encrypted',
         'password_hash_key' => 'encrypted',
         'extra_fields' => 'array',
@@ -64,6 +65,46 @@ class SystemEntry extends Model
     }
 
     /**
+     * Columna que hace de PK en users_table. La mayoría de sistemas usan
+     * "id" (por eso es el default), pero algunos legados (ej. CDS de la
+     * UPU) usan una PK de texto con otro nombre (USER_CD).
+     */
+    public function idColumn(): string
+    {
+        return $this->id_column ?: 'id';
+    }
+
+    /**
+     * Columnas de PK/nombre en roles_table (mecanismo "pivot"). Igual que
+     * idColumn(), la mayoría de sistemas usan "id"/"name" (default), pero
+     * algunos legados (ej. CDS/IPS de la UPU) usan otros nombres.
+     */
+    public function rolesIdColumn(): string
+    {
+        return $this->roles_id_column ?: 'id';
+    }
+
+    public function rolesNameColumn(): string
+    {
+        return $this->roles_name_column ?: 'name';
+    }
+
+    /**
+     * Aplica el filtro fijo de fila configurado (filter_column = filter_value)
+     * para sistemas que comparten una misma tabla física entre dos entradas
+     * del IAM (ej. IPS Escritorio / IPSWeb, ambos en L_USERS discriminados
+     * por la columna IPSWEB).
+     */
+    public function applyRowFilter($builder)
+    {
+        if ($this->filter_column) {
+            $builder->where($this->filter_column, $this->filter_value);
+        }
+
+        return $builder;
+    }
+
+    /**
      * Devuelve el nombre de conexión a usar con DB::connection(). Si el
      * sistema tiene sus propios datos de conexión (host/usuario/password
      * editados desde el IAM), registra una conexión dinámica en runtime;
@@ -80,11 +121,16 @@ class SystemEntry extends Model
 
         if (! Config::has("database.connections.{$name}")) {
             $driver = $this->db_driver ?: 'pgsql';
+            $defaultPort = match ($driver) {
+                'mysql' => 3306,
+                'sqlsrv' => 1433,
+                default => 5432,
+            };
 
             Config::set("database.connections.{$name}", [
                 'driver' => $driver,
                 'host' => $this->db_host,
-                'port' => $this->db_port ?: ($driver === 'mysql' ? 3306 : 5432),
+                'port' => $this->db_port ?: $defaultPort,
                 'database' => $this->db_database,
                 'username' => $this->db_username,
                 'password' => $this->db_password,
@@ -93,6 +139,7 @@ class SystemEntry extends Model
                 'prefix' => '',
                 'search_path' => 'public',
                 'sslmode' => 'prefer',
+                'trust_server_certificate' => $driver === 'sqlsrv' ? true : null,
             ]);
         }
 
@@ -118,11 +165,11 @@ class SystemEntry extends Model
         }
 
         if ($this->role_pivot_table && $this->roles_table) {
-            return $builder->whereNotIn('id', function ($q) {
+            return $builder->whereNotIn($this->idColumn(), function ($q) {
                 $q->select($this->role_pivot_user_column)
                     ->from($this->role_pivot_table)
-                    ->join($this->roles_table, "{$this->roles_table}.id", '=', "{$this->role_pivot_table}.{$this->role_pivot_role_column}")
-                    ->whereIn("{$this->roles_table}.name", $this->hidden_roles);
+                    ->join($this->roles_table, "{$this->roles_table}.{$this->rolesIdColumn()}", '=', "{$this->role_pivot_table}.{$this->role_pivot_role_column}")
+                    ->whereIn("{$this->roles_table}.{$this->rolesNameColumn()}", $this->hidden_roles);
 
                 if ($this->role_pivot_user_column === 'model_id') {
                     $q->where("{$this->role_pivot_table}.model_type", $this->model_type);

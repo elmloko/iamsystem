@@ -129,9 +129,13 @@ const form = useForm({
     has_password: false,
 
     users_table: '',
+    id_column: '',
+    filter_column: '',
+    filter_value: '',
     name_column: '',
     last_name_column: '',
     email_column: '',
+    email_is_login: false,
     password_column: '',
     password_hash_algo: 'bcrypt',
     password_hash_key: '',
@@ -142,6 +146,8 @@ const form = useForm({
     role_column: '',
     role_json_column: '',
     roles_table: '',
+    roles_id_column: '',
+    roles_name_column: '',
     role_pivot_table: '',
     role_pivot_user_column: 'user_id',
     role_pivot_role_column: 'role_id',
@@ -151,6 +157,8 @@ const form = useForm({
     active_type: '',
     active_column: '',
     active_values_text: '',
+    active_write_value: '',
+    inactive_write_value: '',
 
     alias_column: '',
 
@@ -194,9 +202,13 @@ function openEdit(system) {
     form.has_password = system.has_password ?? false;
 
     form.users_table = system.users_table ?? 'users';
+    form.id_column = system.id_column ?? '';
+    form.filter_column = system.filter_column ?? '';
+    form.filter_value = system.filter_value ?? '';
     form.name_column = system.name_column ?? 'name';
     form.last_name_column = system.last_name_column ?? '';
     form.email_column = system.email_column ?? 'email';
+    form.email_is_login = system.email_is_login ?? false;
     form.password_column = system.password_column ?? 'password';
     form.password_hash_algo = system.password_hash_algo ?? 'bcrypt';
     form.password_hash_key = '';
@@ -207,6 +219,8 @@ function openEdit(system) {
     form.role_column = system.role_column ?? '';
     form.role_json_column = system.role_json_column ?? '';
     form.roles_table = system.roles_table ?? '';
+    form.roles_id_column = system.roles_id_column ?? '';
+    form.roles_name_column = system.roles_name_column ?? '';
     form.role_pivot_table = system.role_pivot_table ?? '';
     form.role_pivot_user_column = system.role_pivot_user_column ?? 'user_id';
     form.role_pivot_role_column = system.role_pivot_role_column ?? 'role_id';
@@ -216,6 +230,8 @@ function openEdit(system) {
     form.active_type = system.active_type ?? '';
     form.active_column = system.active_column ?? '';
     form.active_values_text = system.active_values_text ?? '';
+    form.active_write_value = system.active_write_value ?? '';
+    form.inactive_write_value = system.inactive_write_value ?? '';
 
     form.alias_column = system.alias_column ?? '';
 
@@ -838,6 +854,27 @@ onMounted(() => {
                                 <TextInput v-model="form.users_table" type="text" class="mt-1 block w-full" required />
                             </div>
                             <div>
+                                <InputLabel value="Columna id (opcional)" />
+                                <TextInput v-model="form.id_column" type="text" class="mt-1 block w-full" placeholder="id" />
+                                <p class="mt-1 text-xs text-slate-400">
+                                    Solo si la llave primaria de la tabla no se llama "id" (ej. sistemas legados con códigos de texto).
+                                </p>
+                            </div>
+                            <div>
+                                <InputLabel value="Columna de filtro (opcional)" />
+                                <TextInput v-model="form.filter_column" type="text" class="mt-1 block w-full" />
+                                <p class="mt-1 text-xs text-slate-400">
+                                    Si esta tabla se comparte entre dos sistemas del IAM (ej. cliente de escritorio y web sobre la misma tabla), la columna que los distingue.
+                                </p>
+                            </div>
+                            <div v-if="form.filter_column">
+                                <InputLabel value="Valor de filtro" />
+                                <TextInput v-model="form.filter_value" type="text" class="mt-1 block w-full" />
+                                <p class="mt-1 text-xs text-slate-400">
+                                    Solo se muestran filas donde esta columna tenga este valor exacto.
+                                </p>
+                            </div>
+                            <div>
                                 <InputLabel value="Columna nombre" />
                                 <TextInput v-model="form.name_column" type="text" class="mt-1 block w-full" required />
                             </div>
@@ -848,6 +885,10 @@ onMounted(() => {
                             <div>
                                 <InputLabel value="Columna correo" />
                                 <TextInput v-model="form.email_column" type="text" class="mt-1 block w-full" required />
+                                <label class="mt-1 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                                    <input v-model="form.email_is_login" type="checkbox" class="rounded border-slate-300 dark:border-slate-600" />
+                                    Esta columna es en realidad el alias de ingreso, no un correo real (no exigir formato de email)
+                                </label>
                             </div>
                             <div>
                                 <InputLabel value="Columna contraseña" />
@@ -932,6 +973,14 @@ onMounted(() => {
                                 <TextInput v-model="form.roles_table" type="text" class="mt-1 block w-full" />
                             </div>
                             <div>
+                                <InputLabel value="Columna id en tabla de roles (opcional)" />
+                                <TextInput v-model="form.roles_id_column" type="text" class="mt-1 block w-full" placeholder="id" />
+                            </div>
+                            <div>
+                                <InputLabel value="Columna nombre en tabla de roles (opcional)" />
+                                <TextInput v-model="form.roles_name_column" type="text" class="mt-1 block w-full" placeholder="name" />
+                            </div>
+                            <div>
                                 <InputLabel value="Tabla pivote" />
                                 <TextInput v-model="form.role_pivot_table" type="text" class="mt-1 block w-full" />
                             </div>
@@ -984,8 +1033,19 @@ onMounted(() => {
                                 <TextInput v-model="form.active_column" type="text" class="mt-1 block w-full" />
                             </div>
                             <div v-if="form.active_type === 'text'">
-                                <InputLabel value='Valores que cuentan como "activo" (separados por coma)' />
+                                <InputLabel value='Valores que cuentan como "activo" al leer (separados por coma)' />
                                 <TextInput v-model="form.active_values_text" type="text" class="mt-1 block w-full" placeholder="activo, active, habilitado" />
+                            </div>
+                            <div v-if="form.active_type === 'text'">
+                                <InputLabel value="Valor exacto a grabar al dar de alta" />
+                                <TextInput v-model="form.active_write_value" type="text" class="mt-1 block w-full" />
+                            </div>
+                            <div v-if="form.active_type === 'text'">
+                                <InputLabel value="Valor exacto a grabar al dar de baja" />
+                                <TextInput v-model="form.inactive_write_value" type="text" class="mt-1 block w-full" />
+                                <p class="mt-1 text-xs text-slate-400">
+                                    Sin estos dos valores, el botón de alta/baja no aparece para cuentas de este sistema (solo quedaría de lectura).
+                                </p>
                             </div>
                         </div>
                     </section>
